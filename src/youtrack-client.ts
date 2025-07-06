@@ -469,4 +469,13 @@ export class YouTrackClient {
       throw new Error(`Failed to bulk update issues: ${getErrorMessage(error)}`);
     }
   }
+
+  // Cache management methods
+  clearCache(pattern?: string): void {
+    if (pattern) {
+      this.cache.clearPattern(pattern);
+    } else {
+      this.cache.clear();
+    }
+  }
 }
