@@ -515,4 +515,153 @@ export const toolDefinitions = [
       required: ['projectId'],
     },
   },
+
+  // ========================
+  // PHASE 2: AGILE BOARDS
+  // ========================
+  {
+    name: 'list_agile_boards',
+    description: 'List all available agile boards with optional project filtering',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'Filter boards by project ID (optional)',
+        },
+        includeDetails: {
+          type: 'boolean',
+          description: 'Include detailed board information including sprints and columns',
+        },
+      },
+    },
+  },
+  {
+    name: 'get_board_details',
+    description: 'Get detailed information about a specific agile board',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        boardId: {
+          type: 'string',
+          description: 'The agile board ID',
+        },
+        includeColumns: {
+          type: 'boolean',
+          description: 'Include board column configuration',
+        },
+        includeSprints: {
+          type: 'boolean',
+          description: 'Include sprint information',
+        },
+      },
+      required: ['boardId'],
+    },
+  },
+  {
+    name: 'list_sprints',
+    description: 'List sprints for an agile board with filtering options',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        boardId: {
+          type: 'string',
+          description: 'The agile board ID',
+        },
+        includeArchived: {
+          type: 'boolean',
+          description: 'Include archived sprints in the results',
+        },
+        includeIssues: {
+          type: 'boolean',
+          description: 'Include issues assigned to each sprint',
+        },
+      },
+      required: ['boardId'],
+    },
+  },
+  {
+    name: 'get_sprint_details',
+    description: 'Get detailed information about a specific sprint including metrics',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        boardId: {
+          type: 'string',
+          description: 'The agile board ID',
+        },
+        sprintId: {
+          type: 'string',
+          description: 'The sprint ID',
+        },
+        includeIssues: {
+          type: 'boolean',
+          description: 'Include detailed issue information and metrics',
+        },
+      },
+      required: ['boardId', 'sprintId'],
+    },
+  },
+  {
+    name: 'assign_issue_to_sprint',
+    description: 'Assign an issue to a specific sprint',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        issueId: {
+          type: 'string',
+          description: 'The issue ID to assign',
+        },
+        sprintId: {
+          type: 'string',
+          description: 'The sprint ID to assign the issue to',
+        },
+        boardId: {
+          type: 'string',
+          description: 'The agile board ID (optional)',
+        },
+      },
+      required: ['issueId', 'sprintId'],
+    },
+  },
+  {
+    name: 'remove_issue_from_sprint',
+    description: 'Remove an issue from its current sprint',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        issueId: {
+          type: 'string',
+          description: 'The issue ID to remove from sprint',
+        },
+        sprintId: {
+          type: 'string',
+          description: 'The sprint ID (optional, for reference)',
+        },
+      },
+      required: ['issueId'],
+    },
+  },
+  {
+    name: 'get_sprint_progress',
+    description: 'Get comprehensive sprint progress metrics and burndown data',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        boardId: {
+          type: 'string',
+          description: 'The agile board ID',
+        },
+        sprintId: {
+          type: 'string',
+          description: 'The sprint ID',
+        },
+        includeBurndown: {
+          type: 'boolean',
+          description: 'Include burndown chart data points',
+        },
+      },
+      required: ['boardId', 'sprintId'],
+    },
+  },
 ];

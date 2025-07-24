@@ -1517,6 +1517,466 @@ export class YouTrackClient {
   }
 
   // Getter for enhanced client access
+  // ========================
+  // PHASE 2: AGILE BOARDS
+  // ========================
+
+  /**
+   * List all agile boards
+   */
+  async listAgileBoards(params: {
+    projectId?: string;
+    includeDetails?: boolean;
+  }): Promise<MCPResponse> {
+    try {
+      let fieldsParam = 'id,name,projects(id,name,shortName)';
+      if (params.includeDetails) {
+        fieldsParam += ',sprints(id,name,start,finish,archived),columns(id,presentation),currentSprint(id,name)';
+      }
+
+      const agilesParams = { fields: fieldsParam };
+      logApiCall('GET', '/agiles', agilesParams);
+      const response = await this.api.get('/agiles', { params: agilesParams });
+
+      let boards = response.data || [];
+      
+      // Filter by project if specified
+      if (params.projectId) {
+        boards = boards.filter((board: any) => 
+          board.projects?.some((p: any) => p.shortName === params.projectId || p.id === params.projectId)
+        );
+      }
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            boards: boards,
+            count: boards.length,
+            projectFilter: params.projectId || null
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, params);
+      throw new Error(`Failed to list agile boards: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Get detailed information about a specific agile board
+   */
+  async getBoardDetails(params: {
+    boardId: string;
+    includeColumns?: boolean;
+    includeSprints?: boolean;
+  }): Promise<MCPResponse> {
+    try {
+      let fieldsParam = 'id,name,projects(id,name,shortName),estimationField,hideOrphansSwimlane,colorCoding';
+      
+      if (params.includeColumns) {
+        fieldsParam += ',columns(id,presentation,fieldValues(name,presentation),ordinal)';
+      }
+      
+      if (params.includeSprints) {
+        fieldsParam += ',sprints(id,name,start,finish,archived,isDefault),currentSprint(id,name)';
+      }
+
+      const boardParams = { fields: fieldsParam };
+      logApiCall('GET', `/agiles/${params.boardId}`, boardParams);
+      const response = await this.api.get(`/agiles/${params.boardId}`, { params: boardParams });
+
+      const board = response.data;
+      
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            board: board,
+            summary: {
+              name: board.name,
+              projectCount: board.projects?.length || 0,
+              columnCount: board.columns?.length || 0,
+              sprintCount: board.sprints?.length || 0,
+              currentSprint: board.currentSprint?.name || 'None'
+            }
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, params);
+      throw new Error(`Failed to get board details: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * List sprints for an agile board
+   */
+  async listSprints(params: {
+    boardId: string;
+    includeArchived?: boolean;
+    includeIssues?: boolean;
+  }): Promise<MCPResponse> {
+    try {
+      let fieldsParam = 'id,name,start,finish,goal,archived,isDefault';
+      
+      if (params.includeIssues) {
+        fieldsParam += ',issues(id,summary,state(name))';
+      }
+
+      const sprintsParams = { fields: fieldsParam };
+      logApiCall('GET', `/agiles/${params.boardId}/sprints`, sprintsParams);
+      const response = await this.api.get(`/agiles/${params.boardId}/sprints`, { params: sprintsParams });
+
+      let sprints = response.data || [];
+      
+      // Filter archived sprints if not requested
+      if (!params.includeArchived) {
+        sprints = sprints.filter((sprint: any) => !sprint.archived);
+      }
+
+      // Process dates and add metrics
+      const processedSprints = sprints.map((sprint: any) => ({
+        ...sprint,
+        startDate: sprint.start ? new Date(sprint.start).toISOString().split('T')[0] : null,
+        finishDate: sprint.finish ? new Date(sprint.finish).toISOString().split('T')[0] : null,
+        issueCount: sprint.issues?.length || 0,
+        duration: sprint.start && sprint.finish ? 
+          Math.ceil((sprint.finish - sprint.start) / (1000 * 60 * 60 * 24)) : null
+      }));
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            boardId: params.boardId,
+            sprints: processedSprints,
+            count: processedSprints.length,
+            summary: {
+              activeSprints: processedSprints.filter((s: any) => !s.archived).length,
+              archivedSprints: processedSprints.filter((s: any) => s.archived).length,
+              totalIssues: processedSprints.reduce((sum: number, s: any) => sum + s.issueCount, 0)
+            }
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, params);
+      throw new Error(`Failed to list sprints: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Get detailed information about a specific sprint
+   */
+  async getSprintDetails(params: {
+    boardId: string;
+    sprintId: string;
+    includeIssues?: boolean;
+  }): Promise<MCPResponse> {
+    try {
+      let fieldsParam = 'id,name,start,finish,goal,archived,isDefault,board(id,name)';
+      
+      if (params.includeIssues) {
+        fieldsParam += ',issues(id,summary,state(name),priority(name),assignee(login,fullName),estimation)';
+      }
+
+      const sprintParams = { fields: fieldsParam };
+      logApiCall('GET', `/agiles/${params.boardId}/sprints/${params.sprintId}`, sprintParams);
+      const response = await this.api.get(`/agiles/${params.boardId}/sprints/${params.sprintId}`, { params: sprintParams });
+
+      const sprint = response.data;
+      
+      // Process sprint data
+      const processedSprint = {
+        ...sprint,
+        startDate: sprint.start ? new Date(sprint.start).toISOString().split('T')[0] : null,
+        finishDate: sprint.finish ? new Date(sprint.finish).toISOString().split('T')[0] : null,
+        duration: sprint.start && sprint.finish ? 
+          Math.ceil((sprint.finish - sprint.start) / (1000 * 60 * 60 * 24)) : null,
+        issueCount: sprint.issues?.length || 0
+      };
+
+      // Calculate sprint metrics if issues are included
+      let metrics = null;
+      if (params.includeIssues && sprint.issues) {
+        const issues = sprint.issues;
+        metrics = {
+          totalIssues: issues.length,
+          byState: this.groupBy(issues, (issue: any) => issue.state?.name || 'Unknown'),
+          byPriority: this.groupBy(issues, (issue: any) => issue.priority?.name || 'Unknown'),
+          byAssignee: this.groupBy(issues, (issue: any) => issue.assignee?.login || 'Unassigned'),
+          totalEstimation: issues.reduce((sum: number, issue: any) => 
+            sum + (issue.estimation || 0), 0)
+        };
+      }
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            sprint: processedSprint,
+            metrics: metrics
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, params);
+      throw new Error(`Failed to get sprint details: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Assign issue to sprint
+   */
+  async assignIssueToSprint(params: {
+    issueId: string;
+    sprintId: string;
+    boardId?: string;
+  }): Promise<MCPResponse> {
+    try {
+      // If boardId is not provided, we need to find the board that contains the sprint
+      let boardId = params.boardId;
+      if (!boardId) {
+        // Get all boards and find the one with this sprint
+        const boardsResponse = await this.api.get('/agiles', { params: { fields: 'id,sprints(id)' } });
+        const boards = boardsResponse.data || [];
+        for (const board of boards) {
+          if (board.sprints?.some((sprint: any) => sprint.id === params.sprintId)) {
+            boardId = board.id;
+            break;
+          }
+        }
+        if (!boardId) {
+          throw new Error(`Could not find board containing sprint ${params.sprintId}`);
+        }
+      }
+
+      // Use the agile board assignment API
+      const assignData = {
+        commands: [`Sprint ${params.sprintId}`],
+        issues: [{ id: params.issueId }]
+      };
+
+      logApiCall('POST', `/agiles/${boardId}`, assignData);
+      await this.api.post(`/agiles/${boardId}`, assignData);
+
+      // Verify the assignment by checking the sprint
+      const verifyParams = { 
+        fields: 'id,name,issues(id,summary)' 
+      };
+      const verifyResponse = await this.api.get(`/agiles/${boardId}/sprints/${params.sprintId}`, { params: verifyParams });
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            issueId: params.issueId,
+            sprintId: params.sprintId,
+            boardId: boardId,
+            message: `Issue ${params.issueId} assigned to sprint ${params.sprintId}`,
+            sprintIssues: verifyResponse.data.issues?.length || 0
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, params);
+      throw new Error(`Failed to assign issue to sprint: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Remove issue from sprint
+   */
+  async removeIssueFromSprint(params: {
+    issueId: string;
+    sprintId?: string;
+  }): Promise<MCPResponse> {
+    try {
+      // To remove from sprint, we assign it to "Unscheduled" 
+      // First find all boards to locate the correct one
+      const boardsResponse = await this.api.get('/agiles', { params: { fields: 'id,sprints(id,name,isDefault)' } });
+      const boards = boardsResponse.data || [];
+      
+      let boardId = null;
+      let unscheduledSprintId = null;
+      
+      for (const board of boards) {
+        // Look for unscheduled sprint
+        const unscheduledSprint = board.sprints?.find((sprint: any) => sprint.isDefault || sprint.name?.toLowerCase().includes('unscheduled'));
+        if (unscheduledSprint) {
+          boardId = board.id;
+          unscheduledSprintId = unscheduledSprint.id;
+          break;
+        }
+      }
+
+      if (!boardId || !unscheduledSprintId) {
+        throw new Error('Could not find unscheduled sprint to move issue to');
+      }
+
+      // Move to unscheduled sprint
+      const removeData = {
+        commands: [`Sprint ${unscheduledSprintId}`],
+        issues: [{ id: params.issueId }]
+      };
+
+      logApiCall('POST', `/agiles/${boardId}`, removeData);
+      await this.api.post(`/agiles/${boardId}`, removeData);
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            issueId: params.issueId,
+            message: `Issue ${params.issueId} removed from sprint and moved to unscheduled`,
+            movedToSprint: unscheduledSprintId,
+            boardId: boardId
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, params);
+      throw new Error(`Failed to remove issue from sprint: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Get sprint progress and metrics
+   */
+  async getSprintProgress(params: {
+    boardId: string;
+    sprintId: string;
+    includeBurndown?: boolean;
+  }): Promise<MCPResponse> {
+    try {
+      // Get sprint with all issues
+      const sprintParams = {
+        fields: 'id,name,start,finish,goal,issues(id,summary,state(name),priority(name),estimation,resolved,created)'
+      };
+      
+      logApiCall('GET', `/agiles/${params.boardId}/sprints/${params.sprintId}`, sprintParams);
+      const sprintResponse = await this.api.get(`/agiles/${params.boardId}/sprints/${params.sprintId}`, { params: sprintParams });
+
+      const sprint = sprintResponse.data;
+      const issues = sprint.issues || [];
+
+      // Calculate progress metrics
+      const totalIssues = issues.length;
+      const resolvedIssues = issues.filter((issue: any) => issue.resolved).length;
+      const inProgressIssues = issues.filter((issue: any) => 
+        issue.state?.name && !issue.resolved && issue.state.name.toLowerCase().includes('progress')).length;
+      const openIssues = totalIssues - resolvedIssues - inProgressIssues;
+
+      const completionPercentage = totalIssues > 0 ? Math.round((resolvedIssues / totalIssues) * 100) : 0;
+
+      // Calculate time metrics
+      const now = Date.now();
+      const sprintStart = sprint.start || now;
+      const sprintEnd = sprint.finish || now;
+      const sprintDuration = sprintEnd - sprintStart;
+      const timeElapsed = now - sprintStart;
+      const timeRemaining = sprintEnd - now;
+      const progressPercentage = sprintDuration > 0 ? Math.round((timeElapsed / sprintDuration) * 100) : 0;
+
+      let burndownData = null;
+      if (params.includeBurndown) {
+        // Generate simplified burndown chart data
+        burndownData = this.generateBurndownData(issues, sprintStart, sprintEnd);
+      }
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            sprintId: params.sprintId,
+            sprintName: sprint.name,
+            progress: {
+              completion: {
+                percentage: completionPercentage,
+                resolved: resolvedIssues,
+                inProgress: inProgressIssues,
+                open: openIssues,
+                total: totalIssues
+              },
+              timeline: {
+                percentage: progressPercentage,
+                daysElapsed: Math.ceil(timeElapsed / (1000 * 60 * 60 * 24)),
+                daysRemaining: Math.ceil(timeRemaining / (1000 * 60 * 60 * 24)),
+                startDate: new Date(sprintStart).toISOString().split('T')[0],
+                endDate: new Date(sprintEnd).toISOString().split('T')[0]
+              }
+            },
+            burndownData: burndownData,
+            recommendation: this.getSprintRecommendation(completionPercentage, progressPercentage)
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, params);
+      throw new Error(`Failed to get sprint progress: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Helper method to generate burndown chart data
+   */
+  private generateBurndownData(issues: any[], sprintStart: number, sprintEnd: number): any {
+    const totalIssues = issues.length;
+    const sprintDays = Math.ceil((sprintEnd - sprintStart) / (1000 * 60 * 60 * 24));
+    
+    const burndownPoints = [];
+    for (let day = 0; day <= sprintDays; day++) {
+      const dayTimestamp = sprintStart + (day * 24 * 60 * 60 * 1000);
+      const resolvedByDay = issues.filter(issue => 
+        issue.resolved && new Date(issue.resolved).getTime() <= dayTimestamp).length;
+      
+      burndownPoints.push({
+        day: day,
+        date: new Date(dayTimestamp).toISOString().split('T')[0],
+        remaining: totalIssues - resolvedByDay,
+        ideal: Math.max(0, totalIssues - (totalIssues * day / sprintDays))
+      });
+    }
+    
+    return {
+      totalIssues,
+      sprintDays,
+      points: burndownPoints
+    };
+  }
+
+  /**
+   * Helper method to get sprint recommendations
+   */
+  private getSprintRecommendation(completionPercentage: number, progressPercentage: number): string {
+    if (completionPercentage >= progressPercentage) {
+      return "Sprint is on track or ahead of schedule";
+    } else if (progressPercentage - completionPercentage > 20) {
+      return "Sprint is significantly behind schedule - consider scope adjustment";
+    } else {
+      return "Sprint is slightly behind schedule - monitor closely";
+    }
+  }
+
+  /**
+   * Helper method for grouping data
+   */
+  private groupBy<T>(array: T[], keyFn: (item: T) => string): Record<string, number> {
+    return array.reduce((groups: Record<string, number>, item) => {
+      const key = keyFn(item);
+      groups[key] = (groups[key] || 0) + 1;
+      return groups;
+    }, {});
+  }
+
   get apiInstance(): AxiosInstance {
     return this.api;
   }

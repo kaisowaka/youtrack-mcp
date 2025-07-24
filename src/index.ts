@@ -273,6 +273,63 @@ class YouTrackMCPServer {
             });
             break;
 
+          // ========================
+          // PHASE 2: AGILE BOARDS
+          // ========================
+          case 'list_agile_boards':
+            result = await this.youtrackClient.listAgileBoards({
+              projectId: args.projectId as string,
+              includeDetails: args.includeDetails as boolean,
+            });
+            break;
+
+          case 'get_board_details':
+            result = await this.youtrackClient.getBoardDetails({
+              boardId: args.boardId as string,
+              includeColumns: args.includeColumns as boolean,
+              includeSprints: args.includeSprints as boolean,
+            });
+            break;
+
+          case 'list_sprints':
+            result = await this.youtrackClient.listSprints({
+              boardId: args.boardId as string,
+              includeArchived: args.includeArchived as boolean,
+              includeIssues: args.includeIssues as boolean,
+            });
+            break;
+
+          case 'get_sprint_details':
+            result = await this.youtrackClient.getSprintDetails({
+              boardId: args.boardId as string,
+              sprintId: args.sprintId as string,
+              includeIssues: args.includeIssues as boolean,
+            });
+            break;
+
+          case 'assign_issue_to_sprint':
+            result = await this.youtrackClient.assignIssueToSprint({
+              issueId: args.issueId as string,
+              sprintId: args.sprintId as string,
+              boardId: args.boardId as string,
+            });
+            break;
+
+          case 'remove_issue_from_sprint':
+            result = await this.youtrackClient.removeIssueFromSprint({
+              issueId: args.issueId as string,
+              sprintId: args.sprintId as string,
+            });
+            break;
+
+          case 'get_sprint_progress':
+            result = await this.youtrackClient.getSprintProgress({
+              boardId: args.boardId as string,
+              sprintId: args.sprintId as string,
+              includeBurndown: args.includeBurndown as boolean,
+            });
+            break;
+
           default:
             throw new McpError(
               ErrorCode.MethodNotFound,
