@@ -180,28 +180,7 @@ class YouTrackMCPServer {
             );
             break;
 
-          // Enhanced Epic & Milestone Management Tools
-          case 'create_epic':
-            result = await this.youtrackClient.createEpic({
-              projectId: args.projectId as string,
-              summary: args.summary as string,
-              description: args.description as string,
-              priority: args.priority as string,
-              assignee: args.assignee as string,
-            });
-            break;
-
-          case 'link_issue_to_epic':
-            result = await this.youtrackClient.linkIssueToEpic({
-              issueId: args.issueId as string,
-              epicId: args.epicId as string,
-            });
-            break;
-
-          case 'get_epic_progress':
-            result = await this.youtrackClient.getEpicProgress(args.epicId as string);
-            break;
-
+          // Milestone Management Tools
           case 'create_milestone':
             result = await this.youtrackClient.createMilestone({
               projectId: args.projectId as string,

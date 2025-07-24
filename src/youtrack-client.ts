@@ -164,93 +164,94 @@ export class YouTrackClient {
         return cached;
       }
 
-      // Use issues endpoint approach for reliable project validation
-      logApiCall('GET', '/issues', { query: `project: ${projectId}` });
-      
-      try {
-        const response = await this.api.get('/issues', {
-          params: {
-            query: `project: ${projectId}`,
-            fields: 'project(id,name,shortName,description)',
-            '$top': 1
-          }
-        });
+      // First, check if project exists by listing all projects
+      logApiCall('GET', '/admin/projects', { fields: 'id,name,shortName,description' });
+      const allProjectsResponse = await this.api.get('/admin/projects', {
+        params: {
+          fields: 'id,name,shortName,description'
+        }
+      });
 
-        if (response.data && response.data.length > 0 && response.data[0].project) {
+      const foundProject = allProjectsResponse.data.find((p: any) => 
+        p.id === projectId || 
+        p.shortName === projectId || 
+        p.name === projectId
+      );
+
+      if (foundProject) {
+        // Project exists, now check if we can access its issues
+        try {
+          logApiCall('GET', '/issues', { query: `project: ${projectId}` });
+          const issuesResponse = await this.api.get('/issues', {
+            params: {
+              query: `project: ${projectId}`,
+              fields: 'id',
+              '$top': 1
+            }
+          });
+
           const result = {
             exists: true,
             accessible: true,
-            project: response.data[0].project,
+            project: foundProject,
             message: `Project '${projectId}' is valid and accessible`
           };
 
           this.cache.set(cacheKey, result, 60000); // Cache for 1 minute
           return result;
-        } else {
-          // Project might exist but user has no access to issues
-          const allProjects = await this.listProjects();
-          const foundProject = allProjects.find(p => 
-            p.id === projectId || 
-            p.shortName === projectId || 
-            p.name === projectId
-          );
-
-          if (foundProject) {
-            const result = {
-              exists: true,
-              accessible: false,
-              project: foundProject,
-              message: `Project '${projectId}' exists but you may not have access to its issues`,
-              suggestions: ['Check your project permissions', 'Contact project administrator']
-            };
-            this.cache.set(cacheKey, result, 60000);
-            return result;
-          } else {
-            const result = {
-              exists: false,
-              accessible: false,
-              message: `Project '${projectId}' not found`,
-              suggestions: [
-                'Check the project ID/shortName spelling',
-                'Verify the project exists in YouTrack',
-                'Ensure you have access to the project'
-              ]
-            };
-            this.cache.set(cacheKey, result, 60000);
-            return result;
-          }
-        }
-      } catch (error: any) {
-        if (error.response?.status === 404) {
-          const result = {
-            exists: false,
-            accessible: false,
-            message: `Project '${projectId}' not found. Please check the project ID.`,
-            suggestions: [
-              'Verify the project ID is correct',
-              'Check if you have access to this project',
-              'Use list_projects to see available projects'
-            ]
-          };
-          return result;
-        } else if (error.response?.status === 403) {
+        } catch (issueError) {
+          // Can't access issues, but project exists
           const result = {
             exists: true,
             accessible: false,
-            message: `Access denied to project '${projectId}'. You may not have sufficient permissions.`,
-            suggestions: [
-              'Contact your YouTrack administrator for access',
-              'Check if your token has the required permissions',
-              'Verify you are part of this project'
-            ]
+            project: foundProject,
+            message: `Project '${projectId}' exists but you may not have access to its issues`,
+            suggestions: ['Check your project permissions', 'Contact project administrator']
           };
+          this.cache.set(cacheKey, result, 60000);
           return result;
         }
-        throw error;
+      } else {
+        const result = {
+          exists: false,
+          accessible: false,
+          message: `Project '${projectId}' not found`,
+          suggestions: [
+            'Check the project ID/shortName spelling',
+            'Verify the project exists in YouTrack',
+            'Ensure you have access to the project'
+          ]
+        };
+        this.cache.set(cacheKey, result, 60000);
+        return result;
       }
-    } catch (error) {
-      logError(error as Error, { projectId });
-      throw new Error(`Failed to validate project: ${(error as Error).message}`);
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        const result = {
+          exists: false,
+          accessible: false,
+          message: `Project '${projectId}' not found. Please check the project ID.`,
+          suggestions: [
+            'Verify the project ID is correct',
+            'Check if you have access to this project',
+            'Use list_projects to see available projects'
+          ]
+        };
+        return result;
+      } else if (error.response?.status === 403) {
+        const result = {
+          exists: true,
+          accessible: false,
+          message: `Access denied to project '${projectId}'. You may not have sufficient permissions.`,
+          suggestions: [
+            'Contact your YouTrack administrator for access',
+            'Check if your token has the required permissions',
+            'Verify you are part of this project'
+          ]
+        };
+        return result;
+      }
+      throw error;
     }
   }
 
@@ -731,156 +732,7 @@ export class YouTrackClient {
     }
   }
 
-  // === EPIC & MILESTONE MANAGEMENT METHODS ===
-
-  /**
-   * Create an epic issue (Epic is just an issue type in YouTrack)
-   */
-  async createEpic(params: {
-    projectId: string;
-    summary: string;
-    description?: string;
-    priority?: string;
-    assignee?: string;
-    dueDate?: string;
-  }): Promise<MCPResponse> {
-    try {
-      // Epic is just an issue with type 'Epic'
-      const epicParams: CreateIssueParams = {
-        projectId: params.projectId,
-        summary: params.summary,
-        description: params.description,
-        type: 'Epic',
-        priority: params.priority
-      };
-
-      // Create the epic using the standard createIssue method
-      const result = await this.createIssue(epicParams);
-      
-      // Update the response message to indicate it's an epic
-      if (result.content[0].type === 'text') {
-        const data = JSON.parse(result.content[0].text);
-        data.message = `Epic created successfully: ${data.issue.id}`;
-        result.content[0].text = JSON.stringify(data, null, 2);
-      }
-
-      return result;
-    } catch (error) {
-      logError(error as Error, params);
-      throw new Error(`Failed to create epic: ${(error as Error).message}`);
-    }
-  }
-
-  /**
-   * Link an issue to an epic
-   */
-  async linkIssueToEpic(issueIdOrParams: string | {
-    issueId: string;
-    epicId: string;
-  }, epicId?: string): Promise<MCPResponse> {
-    try {
-      let params: { issueId: string; epicId: string };
-      
-      if (typeof issueIdOrParams === 'string') {
-        params = { issueId: issueIdOrParams, epicId: epicId! };
-      } else {
-        params = issueIdOrParams;
-      }
-
-      // YouTrack uses parent field to link issues to epics
-      const linkData = {
-        parent: { id: params.epicId }
-      };
-
-      logApiCall('POST', `/issues/${params.issueId}`, linkData);
-      const response = await this.api.post(`/issues/${params.issueId}`, linkData);
-
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify({
-            success: true,
-            issue: response.data,
-            message: `Issue ${params.issueId} linked to epic ${params.epicId}`
-          }, null, 2)
-        }]
-      };
-    } catch (error) {
-      logError(error as Error, typeof issueIdOrParams === 'string' ? { issueId: issueIdOrParams, epicId } : issueIdOrParams);
-      throw new Error(`Failed to link issue to epic: ${(error as Error).message}`);
-    }
-  }
-
-  /**
-   * Get epic progress
-   */
-  async getEpicProgress(epicId: string): Promise<MCPResponse> {
-    try {
-      // Get epic details
-      const epicResponse = await this.api.get(`/issues/${epicId}`, {
-        params: {
-          fields: 'id,summary,description,state(name),created,customFields(name,value)'
-        }
-      });
-
-      // Get linked issues
-      const linkedIssuesResponse = await this.api.get('/issues', {
-        params: {
-          query: `parent: ${epicId}`,
-          fields: 'id,summary,state(name),priority(name),assignee(login,fullName),created,resolved',
-          '$top': 100
-        }
-      });
-
-      const epic = epicResponse.data;
-      const childIssues = linkedIssuesResponse.data;
-
-      const totalIssues = childIssues.length;
-      const completedIssues = childIssues.filter((issue: any) => 
-        issue.state?.name === 'Done' || 
-        issue.state?.name === 'Closed' || 
-        issue.state?.name === 'Resolved'
-      ).length;
-
-      const progressPercentage = totalIssues > 0 ? Math.round((completedIssues / totalIssues) * 100) : 0;
-
-      const progressReport = {
-        epic: {
-          id: epic.id,
-          name: epic.summary.replace(/^\[EPIC\]\s*/, ''),
-          description: epic.description,
-          state: epic.state?.name
-        },
-        progress: {
-          totalIssues,
-          completedIssues,
-          progressPercentage,
-          inProgress: childIssues.filter((issue: any) => 
-            issue.state?.name === 'In Progress'
-          ).length,
-          open: childIssues.filter((issue: any) => 
-            issue.state?.name === 'Open' || issue.state?.name === 'To Do'
-          ).length
-        },
-        childIssues: childIssues.map((issue: any) => ({
-          id: issue.id,
-          summary: issue.summary,
-          state: issue.state?.name,
-          assignee: issue.assignee?.login
-        }))
-      };
-
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify(progressReport, null, 2)
-        }]
-      };
-    } catch (error) {
-      logError(error as Error, { epicId });
-      throw new Error(`Failed to get epic progress: ${(error as Error).message}`);
-    }
-  }
+  // === MILESTONE MANAGEMENT METHODS ===
 
   /**
    * Create a milestone

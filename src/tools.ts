@@ -268,73 +268,7 @@ export const toolDefinitions = [
     },
   },
 
-  // Enhanced Epic & Milestone Management Tools
-  {
-    name: 'create_epic',
-    description: 'Create a new epic to group related issues and track strategic progress',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        projectId: {
-          type: 'string',
-          description: 'The YouTrack project ID',
-        },
-        summary: {
-          type: 'string',
-          description: 'Epic summary/title',
-        },
-        description: {
-          type: 'string',
-          description: 'Epic description and goals',
-        },
-        priority: {
-          type: 'string',
-          description: 'Epic priority (Critical, High, Normal, Low)',
-        },
-        assignee: {
-          type: 'string',
-          description: 'Epic owner/assignee login',
-        },
-        dueDate: {
-          type: 'string',
-          description: 'Due date in YYYY-MM-DD format',
-        },
-      },
-      required: ['projectId', 'summary'],
-    },
-  },
-  {
-    name: 'link_issue_to_epic',
-    description: 'Link an existing issue to an epic as a child story',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        issueId: {
-          type: 'string',
-          description: 'The issue ID to link',
-        },
-        epicId: {
-          type: 'string',
-          description: 'The epic ID to link to',
-        },
-      },
-      required: ['issueId', 'epicId'],
-    },
-  },
-  {
-    name: 'get_epic_progress',
-    description: 'Get comprehensive progress report for an epic including all child issues, metrics, and recommendations',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        epicId: {
-          type: 'string',
-          description: 'The epic ID',
-        },
-      },
-      required: ['epicId'],
-    },
-  },
+  // Milestone Management Tools
   {
     name: 'create_milestone',
     description: 'Create a project milestone with target date and success criteria',
