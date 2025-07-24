@@ -8,9 +8,17 @@
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
-    "test": "jest",
+    "test": "npx tsx scripts/test-unit.ts",
+    "test:jest": "jest",
     "test:watch": "jest --watch",
-    "test:connection": "tsx src/test-connection.ts",
+    "test:connection": "tsx scripts/test-connection.ts",
+    "test:enhanced": "tsx scripts/test-enhanced-features.ts",
+    "test:integration": "tsx scripts/test-mcp-integration.ts",
+    "test:production": "tsx scripts/test-risk-assessment.ts",
+    "test:all": "npm run test:connection && tsx scripts/test-queries.ts && tsx scripts/test-mcp.ts",
+    "explore": "tsx scripts/explore-youtrack.ts", 
+    "analyze": "tsx scripts/project-enhancement-analysis.ts",
+    "setup": "./setup.sh",
     "lint": "eslint src/**/*.ts",
     "format": "prettier --write src/**/*.ts",
     "clean": "rimraf dist"
@@ -44,26 +52,5 @@
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
     "prettier": "^3.0.0"
-  },
-  "jest": {
-    "preset": "ts-jest/presets/default-esm",
-    "testEnvironment": "node",
-    "extensionsToTreatAsEsm": [".ts"],
-    "moduleNameMapper": {
-      "^(\\.{1,2}/.*)\\.js$": "$1"
-    },
-    "transform": {
-      "^.+\\.tsx?$": ["ts-jest", {
-        "useESM": true
-      }]
-    },
-    "collectCoverageFrom": [
-      "src/**/*.ts",
-      "!src/**/*.d.ts",
-      "!src/__tests__/**"
-    ],
-    "testMatch": [
-      "**/__tests__/**/*.test.(ts|js)"
-    ]
   }
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import dotenv from 'dotenv';
-import { YouTrackClient } from './youtrack-client.js';
+import { YouTrackClient } from '../src/youtrack-client.js';
 
 // Load environment variables
 dotenv.config();

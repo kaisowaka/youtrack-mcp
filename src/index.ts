@@ -10,6 +10,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import dotenv from 'dotenv';
 import { YouTrackClient, MCPResponse } from './youtrack-client.js';
+import { ProductionEnhancedYouTrackClient } from './utils/production-enhanced-client.js';
 import { ConfigManager } from './config.js';
 import { toolDefinitions } from './tools.js';
 import { logger } from './logger.js';
@@ -21,6 +22,7 @@ dotenv.config();
 class YouTrackMCPServer {
   private server: Server;
   private youtrackClient: YouTrackClient;
+  private enhancedClient: ProductionEnhancedYouTrackClient;
   private config: ConfigManager;
   private webhookHandler?: WebhookHandler;
 
@@ -30,6 +32,7 @@ class YouTrackMCPServer {
 
     const { youtrackUrl, youtrackToken } = this.config.get();
     this.youtrackClient = new YouTrackClient(youtrackUrl, youtrackToken);
+    this.enhancedClient = new ProductionEnhancedYouTrackClient(this.youtrackClient.apiInstance);
 
     this.server = new Server(
       {
@@ -124,6 +127,58 @@ class YouTrackMCPServer {
               args.issueIds as string[],
               args.updates as any
             );
+            break;
+
+          // Enhanced Epic & Milestone Management Tools
+          case 'create_epic':
+            result = await this.enhancedClient.createEpic({
+              projectId: args.projectId as string,
+              title: args.summary as string,
+              description: args.description as string,
+              priority: args.priority as string,
+              assignee: args.assignee as string,
+            });
+            break;
+
+          case 'link_issue_to_epic':
+            result = await this.enhancedClient.linkIssueToEpic({
+              issueId: args.issueId as string,
+              epicId: args.epicId as string,
+            });
+            break;
+
+          case 'get_epic_progress':
+            result = await this.enhancedClient.getEpicProgress(args.epicId as string);
+            break;
+
+          case 'create_milestone':
+            result = await this.enhancedClient.createMilestone({
+              projectId: args.projectId as string,
+              title: args.name as string,
+              description: args.description as string,
+              targetDate: args.targetDate as string,
+            });
+            break;
+
+          case 'assign_issues_to_milestone':
+            result = await this.enhancedClient.assignIssuesToMilestone({
+              milestoneId: args.milestoneId as string,
+              issueIds: args.issueIds as string[],
+            });
+            break;
+
+          case 'get_milestone_progress':
+            result = await this.enhancedClient.getMilestoneProgress(args.milestoneId as string);
+            break;
+
+          case 'log_work_time':
+            result = await this.enhancedClient.logWorkTime({
+              issueId: args.issueId as string,
+              duration: args.duration as string,
+              date: args.date as string,
+              description: args.description as string,
+              workType: args.workType as string,
+            });
             break;
 
           default:

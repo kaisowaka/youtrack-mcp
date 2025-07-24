@@ -478,4 +478,9 @@ export class YouTrackClient {
       this.cache.clear();
     }
   }
+
+  // Getter for enhanced client access
+  get apiInstance(): AxiosInstance {
+    return this.api;
+  }
 }

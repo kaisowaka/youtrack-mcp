@@ -1,26 +1,48 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { YouTrackClient, MCPResponse } from '../youtrack-client.js';
-import axios from 'axios';
 
-jest.mock('axios');
-jest.mock('axios-retry');
+// Mock the logger to prevent console output during tests
+jest.mock('../logger.js', () => ({
+  logger: {
+    info: jest.fn(),
+    error: jest.fn(),
+    warn: jest.fn(),
+    debug: jest.fn(),
+  },
+  logApiCall: jest.fn(),
+  logError: jest.fn(),
+}));
+
+// Mock the cache
+jest.mock('../cache.js', () => ({
+  SimpleCache: jest.fn().mockImplementation(() => ({
+    get: jest.fn(() => null),
+    set: jest.fn(),
+  })),
+}));
+
+// Mock axios
+const mockAxiosInstance = {
+  get: jest.fn() as jest.MockedFunction<any>,
+  post: jest.fn() as jest.MockedFunction<any>,
+  interceptors: {
+    response: { use: jest.fn() },
+  },
+};
+
+jest.mock('axios', () => ({
+  default: {
+    create: jest.fn(() => mockAxiosInstance),
+  },
+}));
+
+jest.mock('axios-retry', () => jest.fn());
 
 describe('YouTrackClient', () => {
   let client: YouTrackClient;
-  let mockedAxios: jest.Mocked<typeof axios>;
-  let mockApi: any;
 
   beforeEach(() => {
-    mockedAxios = axios as jest.Mocked<typeof axios>;
-    mockApi = {
-      get: jest.fn(),
-      post: jest.fn(),
-      interceptors: {
-        response: { use: jest.fn() },
-      },
-    };
-    
-    mockedAxios.create.mockReturnValue(mockApi);
+    jest.clearAllMocks();
     client = new YouTrackClient('https://test.youtrack.cloud', 'test-token');
   });
 
@@ -33,7 +55,7 @@ describe('YouTrackClient', () => {
         { id: 'TEST-3', state: { name: 'Open' } },
       ];
 
-      mockApi.get
+      mockAxiosInstance.get
         .mockResolvedValueOnce({ data: mockProject })
         .mockResolvedValueOnce({ data: mockIssues });
 
@@ -55,7 +77,7 @@ describe('YouTrackClient', () => {
     it('should handle project without issues', async () => {
       const mockProject = { id: 'TEST', name: 'Test Project' };
 
-      mockApi.get.mockResolvedValueOnce({ data: mockProject });
+      mockAxiosInstance.get.mockResolvedValueOnce({ data: mockProject });
 
       const result = await client.getProjectStatus('TEST', false);
       
@@ -65,7 +87,7 @@ describe('YouTrackClient', () => {
     });
 
     it('should handle API errors', async () => {
-      mockApi.get.mockRejectedValueOnce(new Error('Network error'));
+      mockAxiosInstance.get.mockRejectedValueOnce(new Error('Network error'));
 
       await expect(client.getProjectStatus('TEST', true))
         .rejects.toThrow('Failed to get project status: Network error');
@@ -82,7 +104,7 @@ describe('YouTrackClient', () => {
         } 
       };
 
-      mockApi.post.mockResolvedValueOnce(mockResponse);
+      mockAxiosInstance.post.mockResolvedValueOnce(mockResponse);
 
       const result = await client.createIssue({
         projectId: 'TEST',
@@ -93,7 +115,7 @@ describe('YouTrackClient', () => {
       });
 
       expect(result.content[0].text).toContain('Issue created successfully: TEST-123');
-      expect(mockApi.post).toHaveBeenCalledWith('/issues', expect.objectContaining({
+      expect(mockAxiosInstance.post).toHaveBeenCalledWith('/issues', expect.objectContaining({
         project: { id: 'TEST' },
         summary: 'Test Issue',
         description: 'Test description',
@@ -112,11 +134,11 @@ describe('YouTrackClient', () => {
         { id: 'TEST-2', summary: 'Issue 2', state: { name: 'Closed' } },
       ];
 
-      mockApi.get.mockResolvedValueOnce({ data: mockIssues });
+      mockAxiosInstance.get.mockResolvedValueOnce({ data: mockIssues });
 
       const result = await client.queryIssues('project: TEST state: Open');
 
-      expect(mockApi.get).toHaveBeenCalledWith('/issues', {
+      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/issues', {
         params: {
           query: 'project: TEST state: Open',
           fields: 'id,summary,description,state(name),priority(name),reporter(login,fullName),assignee(login,fullName)',
@@ -140,7 +162,7 @@ describe('YouTrackClient', () => {
         } 
       };
 
-      mockApi.post.mockResolvedValueOnce(mockResponse);
+      mockAxiosInstance.post.mockResolvedValueOnce(mockResponse);
 
       const result = await client.updateIssue('TEST-123', {
         summary: 'Updated Issue',
@@ -149,7 +171,7 @@ describe('YouTrackClient', () => {
       });
 
       expect(result.content[0].text).toContain('Issue updated successfully: TEST-123');
-      expect(mockApi.post).toHaveBeenCalledWith('/issues/TEST-123', expect.objectContaining({
+      expect(mockAxiosInstance.post).toHaveBeenCalledWith('/issues/TEST-123', expect.objectContaining({
         summary: 'Updated Issue',
         customFields: expect.arrayContaining([
           { name: 'State', value: { name: 'In Progress' } },
@@ -167,7 +189,7 @@ describe('YouTrackClient', () => {
         { id: 'TEST-3', state: { name: 'Open' }, priority: { name: 'High' }, type: { name: 'Bug' } },
       ];
 
-      mockApi.get.mockResolvedValueOnce({ data: mockIssues });
+      mockAxiosInstance.get.mockResolvedValueOnce({ data: mockIssues });
 
       const result = await client.getProjectIssuesSummary('TEST');
 

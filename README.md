@@ -20,7 +20,7 @@ An MCP (Model Context Protocol) server that provides YouTrack REST API access to
 
 1. **Clone and install**:
 ```bash
-git clone https://github.com/yourusername/youtrack-mcp.git
+git clone https://github.com/itsalfredakku/youtrack-mcp.git
 cd youtrack-mcp
 npm install
 ```

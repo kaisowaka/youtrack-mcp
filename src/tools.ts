@@ -200,4 +200,168 @@ export const toolDefinitions = [
       required: ['issueIds', 'updates'],
     },
   },
+
+  // Enhanced Epic & Milestone Management Tools
+  {
+    name: 'create_epic',
+    description: 'Create a new epic to group related issues and track strategic progress',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'The YouTrack project ID',
+        },
+        summary: {
+          type: 'string',
+          description: 'Epic summary/title',
+        },
+        description: {
+          type: 'string',
+          description: 'Epic description and goals',
+        },
+        priority: {
+          type: 'string',
+          description: 'Epic priority (Critical, High, Normal, Low)',
+        },
+        assignee: {
+          type: 'string',
+          description: 'Epic owner/assignee login',
+        },
+        dueDate: {
+          type: 'string',
+          description: 'Due date in YYYY-MM-DD format',
+        },
+      },
+      required: ['projectId', 'summary'],
+    },
+  },
+  {
+    name: 'link_issue_to_epic',
+    description: 'Link an existing issue to an epic as a child story',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        issueId: {
+          type: 'string',
+          description: 'The issue ID to link',
+        },
+        epicId: {
+          type: 'string',
+          description: 'The epic ID to link to',
+        },
+      },
+      required: ['issueId', 'epicId'],
+    },
+  },
+  {
+    name: 'get_epic_progress',
+    description: 'Get comprehensive progress report for an epic including all child issues, metrics, and recommendations',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        epicId: {
+          type: 'string',
+          description: 'The epic ID',
+        },
+      },
+      required: ['epicId'],
+    },
+  },
+  {
+    name: 'create_milestone',
+    description: 'Create a project milestone with target date and success criteria',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'The YouTrack project ID',
+        },
+        name: {
+          type: 'string',
+          description: 'Milestone name',
+        },
+        description: {
+          type: 'string',
+          description: 'Milestone description and objectives',
+        },
+        targetDate: {
+          type: 'string',
+          description: 'Target completion date in YYYY-MM-DD format',
+        },
+        criteria: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Success criteria for the milestone',
+        },
+      },
+      required: ['projectId', 'name', 'targetDate'],
+    },
+  },
+  {
+    name: 'assign_issues_to_milestone',
+    description: 'Assign multiple issues to a milestone for tracking and progress monitoring',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        milestoneId: {
+          type: 'string',
+          description: 'The milestone ID',
+        },
+        issueIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of issue IDs to assign to the milestone',
+        },
+      },
+      required: ['milestoneId', 'issueIds'],
+    },
+  },
+  {
+    name: 'get_milestone_progress',
+    description: 'Get detailed milestone progress including completion percentage, timeline analysis, risks, and recommendations',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        milestoneId: {
+          type: 'string',
+          description: 'The milestone ID',
+        },
+      },
+      required: ['milestoneId'],
+    },
+  },
+
+  // Time Tracking Tools
+  {
+    name: 'log_work_time',
+    description: 'Log work time for an issue with detailed tracking information',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        issueId: {
+          type: 'string',
+          description: 'The issue ID',
+        },
+        duration: {
+          type: 'string',
+          description: 'Time duration (e.g., "2h 30m", "1d", "45m", "1.5h")',
+        },
+        date: {
+          type: 'string',
+          description: 'Work date in YYYY-MM-DD format (defaults to today)',
+        },
+        description: {
+          type: 'string',
+          description: 'Description of work performed',
+        },
+        workType: {
+          type: 'string',
+          description: 'Type of work (Development, Testing, Documentation, etc.)',
+        },
+      },
+      required: ['issueId', 'duration'],
+    },
+  },
 ];
