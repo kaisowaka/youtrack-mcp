@@ -301,29 +301,23 @@ export class YouTrackClient {
         summary: params.summary,
       };
 
-      if (params.description) {
-        issueData.description = params.description;
+      if (params.description?.trim()) {
+        issueData.description = params.description.trim();
       }
 
-      // Don't add custom fields for now to test basic creation
-      // TODO: Add proper custom field validation
-      /* 
-      const customFields: any[] = [];
-      if (params.type) {
-        customFields.push({ name: 'Type', value: { name: params.type } });
-      }
-      if (params.priority) {
-        customFields.push({ name: 'Priority', value: { name: params.priority } });
+      // Add type if specified (Epic is just another issue type)
+      if (params.type?.trim()) {
+        issueData.type = { name: params.type.trim() };
       }
 
-      if (customFields.length > 0) {
-        issueData.customFields = customFields;
+      // Add priority if specified
+      if (params.priority?.trim()) {
+        issueData.priority = { name: params.priority.trim() };
       }
-      */
 
       const response = await this.api.post('/issues', issueData, {
         params: {
-          fields: 'id,summary,description,project(id,name)',
+          fields: 'id,summary,description,project(id,name),type(name),priority(name)',
         },
       });
 
@@ -740,7 +734,7 @@ export class YouTrackClient {
   // === EPIC & MILESTONE MANAGEMENT METHODS ===
 
   /**
-   * Create an epic issue
+   * Create an epic issue (Epic is just an issue type in YouTrack)
    */
   async createEpic(params: {
     projectId: string;
@@ -748,41 +742,29 @@ export class YouTrackClient {
     description?: string;
     priority?: string;
     assignee?: string;
+    dueDate?: string;
   }): Promise<MCPResponse> {
     try {
-      // Resolve project shortName to ID
-      const projectId = await this.resolveProjectId(params.projectId);
-      
-      const epicData: any = {
-        project: { id: projectId },
+      // Epic is just an issue with type 'Epic'
+      const epicParams: CreateIssueParams = {
+        projectId: params.projectId,
         summary: params.summary,
-        description: params.description || '',
-        type: { name: 'Epic' }
+        description: params.description,
+        type: 'Epic',
+        priority: params.priority
       };
 
-      // Add priority if specified
-      if (params.priority) {
-        epicData.priority = { name: params.priority };
+      // Create the epic using the standard createIssue method
+      const result = await this.createIssue(epicParams);
+      
+      // Update the response message to indicate it's an epic
+      if (result.content[0].type === 'text') {
+        const data = JSON.parse(result.content[0].text);
+        data.message = `Epic created successfully: ${data.issue.id}`;
+        result.content[0].text = JSON.stringify(data, null, 2);
       }
 
-      // Add assignee if specified
-      if (params.assignee) {
-        epicData.assignee = { login: params.assignee };
-      }
-
-      logApiCall('POST', '/issues', epicData);
-      const response = await this.api.post('/issues', epicData);
-
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify({
-            success: true,
-            epic: response.data,
-            message: `Epic created successfully: ${response.data.id}`
-          }, null, 2)
-        }]
-      };
+      return result;
     } catch (error) {
       logError(error as Error, params);
       throw new Error(`Failed to create epic: ${(error as Error).message}`);
@@ -1100,13 +1082,30 @@ export class YouTrackClient {
       if (params.date) {
         const dateObj = new Date(params.date);
         workItemData.date = dateObj.getTime();
-      } else {
-        workItemData.date = Date.now();
       }
 
-      // Add work type if provided
+      // Add work type if provided - try to resolve to ID first
       if (params.workType) {
-        workItemData.type = { name: params.workType };
+        try {
+          // Get available work types to map name to ID
+          const workTypesResponse = await this.api.get('/admin/timeTrackingSettings/workItemTypes', {
+            params: { fields: 'id,name' }
+          });
+          
+          const workType = workTypesResponse.data.find((type: any) => 
+            type.name?.toLowerCase() === params.workType?.toLowerCase()
+          );
+          
+          if (workType) {
+            workItemData.type = { id: workType.id };
+          } else {
+            // Fallback to name if ID lookup fails
+            workItemData.type = { name: params.workType };
+          }
+        } catch (error) {
+          // If work type lookup fails, use name as fallback
+          workItemData.type = { name: params.workType };
+        }
       }
 
       logApiCall('POST', `/issues/${params.issueId}/timeTracking/workItems`, workItemData);
@@ -1118,7 +1117,9 @@ export class YouTrackClient {
           text: JSON.stringify({
             success: true,
             workItem: response.data,
-            message: `Work time logged successfully: ${params.duration}`
+            duration: params.duration,
+            message: `Work time logged successfully: ${params.duration}`,
+            issueId: params.issueId
           }, null, 2)
         }]
       };

@@ -25,24 +25,36 @@ async function main() {
     const projectsResult = await client.queryIssues('project: *', 'project(id,name)', 1);
     console.log('✅ Connection successful!\n');
 
-    // If a default project is set, test project status
+    // Test project access
     const defaultProject = process.env.DEFAULT_PROJECT_ID;
     if (defaultProject) {
-      console.log(`📊 Getting status for project: ${defaultProject}`);
-      const statusResult = await client.getProjectStatus(defaultProject, true);
-      console.log('✅ Project status retrieved successfully!\n');
-      
-      // Show a summary
-      const status = JSON.parse((statusResult as any).content[0].text);
-      console.log(`Project: ${status.project.name} (${status.project.id})`);
-      if (status.issueStatistics) {
-        console.log(`Total Issues: ${status.issueStatistics.total}`);
-        console.log('Issues by state:');
-        Object.entries(status.issueStatistics.byState).forEach(([state, count]) => {
-          console.log(`  ${state}: ${count}`);
+      console.log(`📊 Testing project: ${defaultProject}`);
+      try {
+        const validation = await client.validateProject(defaultProject);
+        
+        if (validation.exists) {
+          console.log('✅ Project validation successful!\n');
+          console.log(`Project: ${validation.project.name} (${validation.project.shortName || validation.project.id})`);
+        } else {
+          console.log('❌ Project validation failed');
+          console.log(validation.message);
+        }
+      } catch (error) {
+        console.log('⚠️  Project validation failed with error');
+        console.log('📋 Listing available projects instead...');
+        const projects = await client.listProjects();
+        console.log(`Found ${projects.length} projects:`);
+        projects.slice(0, 5).forEach((project: any) => {
+          console.log(`  - ${project.name} (${project.shortName || project.id})`);
         });
       }
-      console.log();
+    } else {
+      console.log('📋 Listing available projects...');
+      const projects = await client.listProjects();
+      console.log(`Found ${projects.length} projects:`);
+      projects.slice(0, 5).forEach((project: any) => {
+        console.log(`  - ${project.name} (${project.shortName || project.id})`);
+      });
     }
 
     // Test user search
