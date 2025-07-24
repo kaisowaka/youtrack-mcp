@@ -431,4 +431,88 @@ export const toolDefinitions = [
       required: ['issueId', 'duration'],
     },
   },
+  // PHASE 1: REPORTS & ENHANCED TIMESHEET TOOLS
+  {
+    name: 'get_time_tracking_report',
+    description: 'Get time tracking report for a project or user within a date range',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'The YouTrack project ID (optional if userId specified)',
+        },
+        userId: {
+          type: 'string',
+          description: 'User ID to filter by (optional if projectId specified)',
+        },
+        startDate: {
+          type: 'string',
+          description: 'Start date in YYYY-MM-DD format',
+        },
+        endDate: {
+          type: 'string',
+          description: 'End date in YYYY-MM-DD format',
+        },
+        groupBy: {
+          type: 'string',
+          description: 'Group results by: user, issue, date, or workType',
+          enum: ['user', 'issue', 'date', 'workType'],
+        },
+      },
+      required: ['startDate', 'endDate'],
+    },
+  },
+  {
+    name: 'get_user_timesheet',
+    description: 'Get detailed timesheet for a specific user',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        userId: {
+          type: 'string',
+          description: 'User ID or login',
+        },
+        startDate: {
+          type: 'string',
+          description: 'Start date in YYYY-MM-DD format',
+        },
+        endDate: {
+          type: 'string',
+          description: 'End date in YYYY-MM-DD format',
+        },
+        includeDetails: {
+          type: 'boolean',
+          description: 'Include detailed work item information',
+        },
+      },
+      required: ['userId', 'startDate', 'endDate'],
+    },
+  },
+  {
+    name: 'get_project_statistics',
+    description: 'Get comprehensive project statistics and metrics',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'The YouTrack project ID',
+        },
+        startDate: {
+          type: 'string',
+          description: 'Start date for period analysis (optional)',
+        },
+        endDate: {
+          type: 'string',
+          description: 'End date for period analysis (optional)',
+        },
+        includeTimeTracking: {
+          type: 'boolean',
+          description: 'Include time tracking statistics',
+        },
+      },
+      required: ['projectId'],
+    },
+  },
 ];

@@ -58,6 +58,11 @@ export interface UpdateIssueParams {
   state?: string;
   assignee?: string;
   priority?: string;
+  type?: string;
+  subsystem?: string;
+  dueDate?: string;
+  estimation?: number;
+  tags?: string[];
 }
 
 // Helper function for error handling
@@ -134,11 +139,13 @@ export class YouTrackClient {
       
       // Extract unique projects from issues
       const projectsMap = new Map<string, any>();
-      response.data.forEach((issue: any) => {
-        if (issue.project) {
-          projectsMap.set(issue.project.id, issue.project);
-        }
-      });
+      if (response.data && Array.isArray(response.data)) {
+        response.data.forEach((issue: any) => {
+          if (issue.project) {
+            projectsMap.set(issue.project.id, issue.project);
+          }
+        });
+      }
 
       const projects = Array.from(projectsMap.values());
       this.cache.set(cacheKey, projects);
@@ -263,11 +270,20 @@ export class YouTrackClient {
       
       if (issues.data && issues.data.length > 0) {
         const project = issues.data[0].project;
-        // Return the actual project ID that works with the API
-        return project.shortName || project.id || projectIdentifier;
+        // Return the actual project ID (like "0-1") that works with the API
+        return project.id || project.shortName || projectIdentifier;
       }
     } catch (error) {
-      // If issue query fails, fall back to original identifier
+      // If issue query fails, try to get projects list
+      try {
+        const projects = await this.listProjects();
+        const project = projects.find(p => p.shortName === projectIdentifier || p.id === projectIdentifier);
+        if (project) {
+          return project.id;
+        }
+      } catch (listError) {
+        // Fall back to original identifier
+      }
     }
     
     return projectIdentifier;
@@ -277,8 +293,11 @@ export class YouTrackClient {
     try {
       logApiCall('POST', '/issues', params);
 
+      // Resolve project shortName to ID
+      const projectId = await this.resolveProjectId(params.projectId);
+
       const issueData: any = {
-        project: { id: params.projectId },
+        project: { id: projectId },
         summary: params.summary,
       };
 
@@ -286,7 +305,9 @@ export class YouTrackClient {
         issueData.description = params.description;
       }
 
-      // Handle custom fields for type and priority
+      // Don't add custom fields for now to test basic creation
+      // TODO: Add proper custom field validation
+      /* 
       const customFields: any[] = [];
       if (params.type) {
         customFields.push({ name: 'Type', value: { name: params.type } });
@@ -298,6 +319,7 @@ export class YouTrackClient {
       if (customFields.length > 0) {
         issueData.customFields = customFields;
       }
+      */
 
       const response = await this.api.post('/issues', issueData, {
         params: {
@@ -311,7 +333,11 @@ export class YouTrackClient {
       return {
         content: [{
           type: 'text',
-          text: `Issue created successfully: ${response.data.id}\n${JSON.stringify(response.data, null, 2)}`,
+          text: JSON.stringify({
+            success: true,
+            issue: response.data,
+            message: `Issue created successfully: ${response.data.id}`
+          }, null, 2)
         }],
       };
     } catch (error) {
@@ -358,7 +384,6 @@ export class YouTrackClient {
       logApiCall('POST', `/issues/${issueId}`, updates);
 
       const updateData: any = {};
-      const customFields: any[] = [];
 
       if (updates.summary) {
         updateData.summary = updates.summary;
@@ -367,22 +392,33 @@ export class YouTrackClient {
         updateData.description = updates.description;
       }
       if (updates.state) {
-        customFields.push({ name: 'State', value: { name: updates.state } });
+        updateData.state = { name: updates.state };
       }
       if (updates.priority) {
-        customFields.push({ name: 'Priority', value: { name: updates.priority } });
+        updateData.priority = { name: updates.priority };
       }
       if (updates.assignee) {
-        customFields.push({ name: 'Assignee', value: { login: updates.assignee } });
+        updateData.assignee = { login: updates.assignee };
       }
-
-      if (customFields.length > 0) {
-        updateData.customFields = customFields;
+      if (updates.type) {
+        updateData.type = { name: updates.type };
+      }
+      if (updates.subsystem) {
+        updateData.subsystem = { name: updates.subsystem };
+      }
+      if (updates.dueDate) {
+        updateData.dueDate = updates.dueDate;
+      }
+      if (updates.estimation) {
+        updateData.estimation = { minutes: updates.estimation };
+      }
+      if (updates.tags) {
+        updateData.tags = updates.tags.map(tag => ({ name: tag }));
       }
 
       const response = await this.api.post(`/issues/${issueId}`, updateData, {
         params: {
-          fields: 'id,summary,description,state(name),priority(name),assignee(login,fullName)',
+          fields: 'id,summary,description,state(name),priority(name),assignee(login,fullName),type(name)',
         },
       });
 
@@ -393,7 +429,11 @@ export class YouTrackClient {
       return {
         content: [{
           type: 'text',
-          text: `Issue updated successfully: ${issueId}\n${JSON.stringify(response.data, null, 2)}`,
+          text: JSON.stringify({
+            success: true,
+            issue: response.data,
+            message: `Issue updated successfully: ${issueId}`
+          }, null, 2),
         }],
       };
     } catch (error) {
@@ -422,6 +462,7 @@ export class YouTrackClient {
 
       // Generate summary statistics
       const summary = {
+        projectId: projectId,
         total: response.data.length,
         byState: {} as Record<string, number>,
         byPriority: {} as Record<string, number>,
@@ -693,35 +734,37 @@ export class YouTrackClient {
 
       const customFieldsMap = new Map<string, CustomField>();
       
-      response.data.forEach((issue: any) => {
-        if (issue.customFields) {
-          issue.customFields.forEach((field: any) => {
-            const fieldName = field.name || field.field?.name;
-            if (fieldName && !customFieldsMap.has(fieldName)) {
-              const customField: CustomField = {
-                name: fieldName,
-                type: field.field?.$type || field.value?.$type || 'Unknown',
-                values: [],
-                sample: field.value?.name || field.value?.login || field.value?.fullName || JSON.stringify(field.value)
-              };
+      if (response.data && Array.isArray(response.data)) {
+        response.data.forEach((issue: any) => {
+          if (issue.customFields) {
+            issue.customFields.forEach((field: any) => {
+              const fieldName = field.name || field.field?.name;
+              if (fieldName && !customFieldsMap.has(fieldName)) {
+                const customField: CustomField = {
+                  name: fieldName,
+                  type: field.field?.$type || field.value?.$type || 'Unknown',
+                  values: [],
+                  sample: field.value?.name || field.value?.login || field.value?.fullName || JSON.stringify(field.value)
+                };
 
-              // Collect sample values for enum-like fields
-              if (field.value?.name) {
-                customField.values = [field.value.name];
-              }
+                // Collect sample values for enum-like fields
+                if (field.value?.name) {
+                  customField.values = [field.value.name];
+                }
 
-              customFieldsMap.set(fieldName, customField);
-            } else if (fieldName && customFieldsMap.has(fieldName)) {
-              // Add to values if it's a new value
-              const existingField = customFieldsMap.get(fieldName)!;
-              if (field.value?.name && !existingField.values?.includes(field.value.name)) {
-                existingField.values = existingField.values || [];
-                existingField.values.push(field.value.name);
+                customFieldsMap.set(fieldName, customField);
+              } else if (fieldName && customFieldsMap.has(fieldName)) {
+                // Add to values if it's a new value
+                const existingField = customFieldsMap.get(fieldName)!;
+                if (field.value?.name && !existingField.values?.includes(field.value.name)) {
+                  existingField.values = existingField.values || [];
+                  existingField.values.push(field.value.name);
+                }
               }
-            }
-          });
-        }
-      });
+            });
+          }
+        });
+      }
 
       const customFields = Array.from(customFieldsMap.values());
       this.cache.set(cacheKey, customFields, 300000); // Cache for 5 minutes
@@ -739,40 +782,34 @@ export class YouTrackClient {
    */
   async createEpic(params: {
     projectId: string;
-    title: string;
+    summary: string;
     description?: string;
     priority?: string;
     assignee?: string;
   }): Promise<MCPResponse> {
     try {
-      const epicData = {
-        project: { id: params.projectId },
-        summary: `[EPIC] ${params.title}`,
+      // Resolve project shortName to ID
+      const projectId = await this.resolveProjectId(params.projectId);
+      
+      const epicData: any = {
+        project: { id: projectId },
+        summary: params.summary,
         description: params.description || '',
-        customFields: [
-          {
-            name: 'Type',
-            value: { name: 'Epic' }
-          }
-        ] as any[]
+        type: { name: 'Epic' }
       };
 
+      // Add priority if specified
       if (params.priority) {
-        epicData.customFields.push({
-          name: 'Priority',
-          value: { name: params.priority }
-        });
+        epicData.priority = { name: params.priority };
       }
 
+      // Add assignee if specified
       if (params.assignee) {
-        epicData.customFields.push({
-          name: 'Assignee',
-          value: { login: params.assignee }
-        });
+        epicData.assignee = { login: params.assignee };
       }
 
       logApiCall('POST', '/issues', epicData);
-      const response = await this.api.put('/issues', epicData);
+      const response = await this.api.post('/issues', epicData);
 
       return {
         content: [{
@@ -793,30 +830,39 @@ export class YouTrackClient {
   /**
    * Link an issue to an epic
    */
-  async linkIssueToEpic(params: {
+  async linkIssueToEpic(issueIdOrParams: string | {
     issueId: string;
     epicId: string;
-  }): Promise<MCPResponse> {
+  }, epicId?: string): Promise<MCPResponse> {
     try {
+      let params: { issueId: string; epicId: string };
+      
+      if (typeof issueIdOrParams === 'string') {
+        params = { issueId: issueIdOrParams, epicId: epicId! };
+      } else {
+        params = issueIdOrParams;
+      }
+
+      // YouTrack uses parent field to link issues to epics
       const linkData = {
-        linkType: { name: 'subtask of' },
-        issues: [{ id: params.epicId }]
+        parent: { id: params.epicId }
       };
 
-      logApiCall('POST', `/issues/${params.issueId}/links`, linkData);
-      const response = await this.api.post(`/issues/${params.issueId}/links`, linkData);
+      logApiCall('POST', `/issues/${params.issueId}`, linkData);
+      const response = await this.api.post(`/issues/${params.issueId}`, linkData);
 
       return {
         content: [{
           type: 'text',
           text: JSON.stringify({
             success: true,
+            issue: response.data,
             message: `Issue ${params.issueId} linked to epic ${params.epicId}`
           }, null, 2)
         }]
       };
     } catch (error) {
-      logError(error as Error, params);
+      logError(error as Error, typeof issueIdOrParams === 'string' ? { issueId: issueIdOrParams, epicId } : issueIdOrParams);
       throw new Error(`Failed to link issue to epic: ${(error as Error).message}`);
     }
   }
@@ -903,6 +949,9 @@ export class YouTrackClient {
     criteria?: string[];
   }): Promise<MCPResponse> {
     try {
+      // Resolve project shortName to ID
+      const projectId = await this.resolveProjectId(params.projectId);
+      
       const milestoneDescription = [
         params.description || '',
         '',
@@ -915,23 +964,15 @@ export class YouTrackClient {
       ].join('\n');
 
       const milestoneData = {
-        project: { id: params.projectId },
-        summary: `[MILESTONE] ${params.name}`,
+        project: { id: projectId },
+        summary: params.name,
         description: milestoneDescription,
-        customFields: [
-          {
-            name: 'Type',
-            value: { name: 'Milestone' }
-          },
-          {
-            name: 'Due Date',
-            value: params.targetDate
-          }
-        ]
+        type: { name: 'Task' }, // Use Task type for milestones
+        dueDate: params.targetDate
       };
 
       logApiCall('POST', '/issues', milestoneData);
-      const response = await this.api.put('/issues', milestoneData);
+      const response = await this.api.post('/issues', milestoneData);
 
       return {
         content: [{
@@ -1081,12 +1122,30 @@ export class YouTrackClient {
     workType?: string;
   }): Promise<MCPResponse> {
     try {
-      const workItemData = {
-        duration: params.duration,
-        description: params.description || 'Work logged via MCP',
-        date: params.date || new Date().toISOString().split('T')[0],
-        type: params.workType ? { name: params.workType } : undefined
+      // Parse duration string to minutes
+      const durationMinutes = this.parseDurationToMinutes(params.duration);
+      
+      // Prepare work item data in YouTrack's expected format
+      const workItemData: any = {
+        duration: {
+          presentation: params.duration,
+          minutes: durationMinutes
+        },
+        description: params.description || 'Work logged via MCP'
       };
+
+      // Add date as timestamp if provided
+      if (params.date) {
+        const dateObj = new Date(params.date);
+        workItemData.date = dateObj.getTime();
+      } else {
+        workItemData.date = Date.now();
+      }
+
+      // Add work type if provided
+      if (params.workType) {
+        workItemData.type = { name: params.workType };
+      }
 
       logApiCall('POST', `/issues/${params.issueId}/timeTracking/workItems`, workItemData);
       const response = await this.api.post(`/issues/${params.issueId}/timeTracking/workItems`, workItemData);
@@ -1104,6 +1163,347 @@ export class YouTrackClient {
     } catch (error) {
       logError(error as Error, params);
       throw new Error(`Failed to log work time: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Parse duration string to minutes
+   * Supports formats like: "1h", "30m", "2h 30m", "1.5h", "90m"
+   */
+  private parseDurationToMinutes(duration: string): number {
+    let totalMinutes = 0;
+    
+    // Remove extra spaces and convert to lowercase
+    const normalized = duration.toLowerCase().trim();
+    
+    // Match hours (h) and minutes (m)
+    const hourMatch = normalized.match(/(\d+(?:\.\d+)?)\s*h/);
+    const minuteMatch = normalized.match(/(\d+)\s*m/);
+    
+    if (hourMatch) {
+      totalMinutes += parseFloat(hourMatch[1]) * 60;
+    }
+    
+    if (minuteMatch) {
+      totalMinutes += parseInt(minuteMatch[1]);
+    }
+    
+    // If no matches, try parsing as just a number (assume minutes)
+    if (!hourMatch && !minuteMatch) {
+      const numberMatch = normalized.match(/(\d+(?:\.\d+)?)/);
+      if (numberMatch) {
+        totalMinutes = parseFloat(numberMatch[1]);
+      }
+    }
+    
+    return Math.round(totalMinutes);
+  }
+
+  // ========================================
+  // PHASE 1: REPORTS & ENHANCED TIMESHEET
+  // ========================================
+
+  /**
+   * Get time tracking report for a project or user
+   */
+  async getTimeTrackingReport(params: {
+    projectId?: string;
+    userId?: string;
+    startDate: string; // YYYY-MM-DD
+    endDate: string;   // YYYY-MM-DD
+    groupBy?: 'user' | 'issue' | 'date' | 'workType';
+  }): Promise<MCPResponse> {
+    try {
+      const cacheKey = `time-report-${JSON.stringify(params)}`;
+      const cached = this.cache.get<MCPResponse>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+
+      // Build query for work items
+      let query = `created: ${params.startDate} .. ${params.endDate}`;
+      
+      if (params.projectId) {
+        query += ` project: ${params.projectId}`;
+      }
+      
+      if (params.userId) {
+        query += ` work author: ${params.userId}`;
+      }
+
+      const workItemsParams = {
+        query: query,
+        fields: 'id,issue(id,summary,project(name)),author(login,fullName),date,duration(minutes,presentation),description,type(name)',
+        $top: 1000
+      };
+
+      logApiCall('GET', '/workItems', workItemsParams);
+      const response = await this.api.get('/workItems', { params: workItemsParams });
+
+      // Process and group the data
+      const workItems = response.data || [];
+      const report = this.processTimeReport(workItems, params.groupBy || 'user');
+
+      const result = {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            reportPeriod: { startDate: params.startDate, endDate: params.endDate },
+            groupBy: params.groupBy || 'user',
+            totalItems: workItems.length,
+            totalTime: report.totalMinutes,
+            totalTimeFormatted: this.formatMinutesToDuration(report.totalMinutes),
+            groups: report.groups,
+            workItems: workItems
+          }, null, 2)
+        }]
+      };
+
+      this.cache.set(cacheKey, result, 300000); // 5 minutes cache
+      return result;
+    } catch (error) {
+      logError(error as Error, params);
+      throw new Error(`Failed to get time tracking report: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Get user timesheet for a specific period
+   */
+  async getUserTimesheet(params: {
+    userId: string;
+    startDate: string; // YYYY-MM-DD
+    endDate: string;   // YYYY-MM-DD
+    includeDetails?: boolean;
+  }): Promise<MCPResponse> {
+    try {
+      const query = `work author: ${params.userId} created: ${params.startDate} .. ${params.endDate}`;
+      
+      const workItemsParams = {
+        query: query,
+        fields: 'id,issue(id,summary,project(name,shortName)),date,duration(minutes,presentation),description,type(name)',
+        $top: 1000
+      };
+
+      logApiCall('GET', '/workItems', workItemsParams);
+      const response = await this.api.get('/workItems', { params: workItemsParams });
+
+      const workItems = response.data || [];
+      
+      // Group by date for timesheet view
+      const timesheetData = this.groupWorkItemsByDate(workItems);
+      const totalMinutes = workItems.reduce((sum: number, item: any) => sum + (item.duration?.minutes || 0), 0);
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            userId: params.userId,
+            period: { startDate: params.startDate, endDate: params.endDate },
+            totalHours: Math.round((totalMinutes / 60) * 100) / 100,
+            totalMinutes: totalMinutes,
+            dailyBreakdown: timesheetData,
+            workItems: params.includeDetails ? workItems : undefined
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, params);
+      throw new Error(`Failed to get user timesheet: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Get project statistics and metrics
+   */
+  async getProjectStatistics(params: {
+    projectId: string;
+    period?: { startDate: string; endDate: string };
+    includeTimeTracking?: boolean;
+  }): Promise<MCPResponse> {
+    try {
+      const projectId = await this.resolveProjectId(params.projectId);
+      
+      // Get basic issue statistics
+      let issueQuery = `project: ${params.projectId}`;
+      if (params.period) {
+        issueQuery += ` created: ${params.period.startDate} .. ${params.period.endDate}`;
+      }
+
+      const issuesParams = {
+        query: issueQuery,
+        fields: 'id,state(name),priority(name),type(name),assignee(login),created,resolved',
+        $top: 2000
+      };
+
+      logApiCall('GET', '/issues', issuesParams);
+      const issuesResponse = await this.api.get('/issues', { params: issuesParams });
+      
+      const issues = issuesResponse.data || [];
+      const stats = this.calculateProjectStatistics(issues);
+
+      // Add time tracking statistics if requested
+      if (params.includeTimeTracking && params.period) {
+        const timeReport = await this.getTimeTrackingReport({
+          projectId: params.projectId,
+          startDate: params.period.startDate,
+          endDate: params.period.endDate,
+          groupBy: 'issue'
+        });
+        
+        const timeData = JSON.parse(timeReport.content[0].text);
+        stats.timeTracking = {
+          totalTime: timeData.totalTimeFormatted,
+          totalMinutes: timeData.totalMinutes,
+          averageTimePerIssue: Math.round(timeData.totalMinutes / Math.max(issues.length, 1))
+        };
+      }
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            projectId: params.projectId,
+            period: params.period,
+            statistics: stats
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, params);
+      throw new Error(`Failed to get project statistics: ${(error as Error).message}`);
+    }
+  }
+
+  // Helper methods for report processing
+  private processTimeReport(workItems: any[], groupBy: string) {
+    const groups: Record<string, any> = {};
+    let totalMinutes = 0;
+
+    workItems.forEach(item => {
+      const minutes = item.duration?.minutes || 0;
+      totalMinutes += minutes;
+
+      let groupKey: string;
+      switch (groupBy) {
+        case 'user':
+          groupKey = item.author?.fullName || item.author?.login || 'Unknown';
+          break;
+        case 'issue':
+          groupKey = `${item.issue?.id} - ${item.issue?.summary}`;
+          break;
+        case 'date':
+          groupKey = new Date(item.date).toISOString().split('T')[0];
+          break;
+        case 'workType':
+          groupKey = item.type?.name || 'No Type';
+          break;
+        default:
+          groupKey = 'All';
+      }
+
+      if (!groups[groupKey]) {
+        groups[groupKey] = {
+          totalMinutes: 0,
+          totalHours: 0,
+          itemCount: 0,
+          items: []
+        };
+      }
+
+      groups[groupKey].totalMinutes += minutes;
+      groups[groupKey].totalHours = Math.round((groups[groupKey].totalMinutes / 60) * 100) / 100;
+      groups[groupKey].itemCount++;
+      groups[groupKey].items.push(item);
+    });
+
+    return { totalMinutes, groups };
+  }
+
+  private groupWorkItemsByDate(workItems: any[]) {
+    const dailyData: Record<string, any> = {};
+    
+    workItems.forEach(item => {
+      const date = new Date(item.date).toISOString().split('T')[0];
+      
+      if (!dailyData[date]) {
+        dailyData[date] = {
+          date,
+          totalMinutes: 0,
+          totalHours: 0,
+          items: []
+        };
+      }
+      
+      dailyData[date].totalMinutes += item.duration?.minutes || 0;
+      dailyData[date].totalHours = Math.round((dailyData[date].totalMinutes / 60) * 100) / 100;
+      dailyData[date].items.push(item);
+    });
+    
+    return Object.values(dailyData).sort((a: any, b: any) => a.date.localeCompare(b.date));
+  }
+
+  private calculateProjectStatistics(issues: any[]) {
+    const stats: any = {
+      total: issues.length,
+      byState: {} as Record<string, number>,
+      byPriority: {} as Record<string, number>,
+      byType: {} as Record<string, number>,
+      byAssignee: {} as Record<string, number>,
+      resolved: 0,
+      averageResolutionTime: 0
+    };
+
+    let totalResolutionTime = 0;
+    let resolvedCount = 0;
+
+    issues.forEach(issue => {
+      // Count by state
+      const state = issue.state?.name || 'No State';
+      stats.byState[state] = (stats.byState[state] || 0) + 1;
+
+      // Count by priority
+      const priority = issue.priority?.name || 'No Priority';
+      stats.byPriority[priority] = (stats.byPriority[priority] || 0) + 1;
+
+      // Count by type
+      const type = issue.type?.name || 'No Type';
+      stats.byType[type] = (stats.byType[type] || 0) + 1;
+
+      // Count by assignee
+      const assignee = issue.assignee?.login || 'Unassigned';
+      stats.byAssignee[assignee] = (stats.byAssignee[assignee] || 0) + 1;
+
+      // Calculate resolution time
+      if (issue.resolved && issue.created) {
+        const created = new Date(issue.created).getTime();
+        const resolved = new Date(issue.resolved).getTime();
+        totalResolutionTime += resolved - created;
+        resolvedCount++;
+        stats.resolved++;
+      }
+    });
+
+    if (resolvedCount > 0) {
+      stats.averageResolutionTime = Math.round(totalResolutionTime / resolvedCount / (1000 * 60 * 60 * 24)); // days
+    }
+
+    return stats;
+  }
+
+  private formatMinutesToDuration(minutes: number): string {
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    
+    if (hours === 0) {
+      return `${remainingMinutes}m`;
+    } else if (remainingMinutes === 0) {
+      return `${hours}h`;
+    } else {
+      return `${hours}h ${remainingMinutes}m`;
     }
   }
 

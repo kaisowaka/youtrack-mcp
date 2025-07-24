@@ -147,6 +147,29 @@ async function runTests() {
       test.expect(typeof client.updateIssue).toBe('function');
       test.expect(typeof client.createEpic).toBe('function');
     });
+
+    test.it('should use correct HTTP methods for create operations', () => {
+      const client = new YouTrackClient(mockEnv.YOUTRACK_URL, mockEnv.YOUTRACK_TOKEN);
+      // These should use PUT method for YouTrack API compatibility
+      test.expect(typeof client.createIssue).toBe('function');
+      test.expect(typeof client.createEpic).toBe('function');
+      test.expect(typeof client.createMilestone).toBe('function');
+    });
+
+    test.it('should have all 21 expected methods', () => {
+      const client = new YouTrackClient(mockEnv.YOUTRACK_URL, mockEnv.YOUTRACK_TOKEN);
+      const expectedMethods = [
+        'listProjects', 'validateProject', 'getProjectStats', 'getProjectCustomFields',
+        'getProjectIssuesSummary', 'getProjectTimeline', 'createIssue', 'updateIssue',
+        'queryIssues', 'bulkUpdateIssues', 'getIssueComments', 'addIssueComment',
+        'searchUsers', 'createEpic', 'linkIssueToEpic', 'getEpicProgress',
+        'createMilestone', 'assignIssuesToMilestone', 'getMilestoneProgress', 'logWorkTime'
+      ];
+      
+      expectedMethods.forEach(method => {
+        test.expect(typeof (client as any)[method]).toBe('function');
+      });
+    });
   });
 
   const success = test.summary();

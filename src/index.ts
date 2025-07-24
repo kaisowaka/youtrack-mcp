@@ -191,7 +191,7 @@ class YouTrackMCPServer {
           case 'create_epic':
             result = await this.youtrackClient.createEpic({
               projectId: args.projectId as string,
-              title: args.summary as string,
+              summary: args.summary as string,
               description: args.description as string,
               priority: args.priority as string,
               assignee: args.assignee as string,
@@ -237,6 +237,39 @@ class YouTrackMCPServer {
               date: args.date as string,
               description: args.description as string,
               workType: args.workType as string,
+            });
+            break;
+
+          // PHASE 1: REPORTS & ENHANCED TIMESHEET HANDLERS
+          case 'get_time_tracking_report':
+            result = await this.youtrackClient.getTimeTrackingReport({
+              projectId: args.projectId as string,
+              userId: args.userId as string,
+              startDate: args.startDate as string,
+              endDate: args.endDate as string,
+              groupBy: args.groupBy as 'user' | 'issue' | 'date' | 'workType',
+            });
+            break;
+
+          case 'get_user_timesheet':
+            result = await this.youtrackClient.getUserTimesheet({
+              userId: args.userId as string,
+              startDate: args.startDate as string,
+              endDate: args.endDate as string,
+              includeDetails: args.includeDetails as boolean,
+            });
+            break;
+
+          case 'get_project_statistics':
+            const period = (args.startDate && args.endDate) ? {
+              startDate: args.startDate as string,
+              endDate: args.endDate as string
+            } : undefined;
+            
+            result = await this.youtrackClient.getProjectStatistics({
+              projectId: args.projectId as string,
+              period: period,
+              includeTimeTracking: args.includeTimeTracking as boolean,
             });
             break;
 

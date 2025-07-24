@@ -15,12 +15,17 @@ export const logger = winston.createLogger({
   ],
 });
 
-if (process.env.NODE_ENV !== 'production') {
+if (process.env.NODE_ENV !== 'production' && !process.env.MCP_SERVER) {
   logger.add(new winston.transports.Console({
     format: winston.format.combine(
       winston.format.colorize(),
       winston.format.simple()
     ),
+  }));
+} else if (process.env.MCP_SERVER) {
+  // For MCP server mode, use plain JSON output without colors
+  logger.add(new winston.transports.Console({
+    format: winston.format.json()
   }));
 }
 
