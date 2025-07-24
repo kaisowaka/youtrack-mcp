@@ -178,7 +178,7 @@ Based on your feedback and our implementations:
       "env": {
         "YOUTRACK_URL": "http://youtrack.devstroop",
         "YOUTRACK_TOKEN": "your-token-here",
-        "DEFAULT_PROJECT_ID": "MYD"
+        "PROJECT_ID": "MYD"
       }
     }
   }

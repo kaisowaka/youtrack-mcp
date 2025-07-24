@@ -41,7 +41,7 @@ export class ConfigManager {
     return {
       youtrackUrl: process.env.YOUTRACK_URL || fileConfig.youtrackUrl || '',
       youtrackToken: process.env.YOUTRACK_TOKEN || fileConfig.youtrackToken || '',
-      defaultProjectId: process.env.DEFAULT_PROJECT_ID || fileConfig.defaultProjectId,
+      defaultProjectId: process.env.PROJECT_ID || fileConfig.defaultProjectId,
       cache: {
         enabled: process.env.CACHE_ENABLED !== 'false',
         ttl: parseInt(process.env.CACHE_TTL || '300000'),

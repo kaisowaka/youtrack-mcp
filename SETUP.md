@@ -32,7 +32,7 @@ cp .env.example .env
 ```bash
 YOUTRACK_URL=https://your-company.youtrack.cloud
 YOUTRACK_TOKEN=perm:username.tokenname.tokenvalue
-DEFAULT_PROJECT_ID=YOUR-PROJECT-ID
+PROJECT_ID=YOUR-PROJECT-ID
 ```
 
 ## Step 4: Test Connection

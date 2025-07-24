@@ -26,7 +26,7 @@ async function main() {
     console.log('✅ Connection successful!\n');
 
     // Test project access
-    const defaultProject = process.env.DEFAULT_PROJECT_ID;
+    const defaultProject = process.env.PROJECT_ID;
     if (defaultProject) {
       console.log(`📊 Testing project: ${defaultProject}`);
       try {

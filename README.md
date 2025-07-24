@@ -45,7 +45,7 @@ npm start
 |----------|----------|-------------|---------|
 | `YOUTRACK_URL` | ✅ | YouTrack instance URL | - |
 | `YOUTRACK_TOKEN` | ✅ | Permanent token | - |
-| `DEFAULT_PROJECT_ID` | ❌ | Default project ID | - |
+| `PROJECT_ID` | ❌ | Default project ID | - |
 | `ENABLE_WEBHOOKS` | ❌ | Enable webhook server | `false` |
 | `WEBHOOK_PORT` | ❌ | Webhook server port | `3000` |
 | `WEBHOOK_SECRET` | ❌ | Webhook signature secret | - |

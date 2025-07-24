@@ -86,7 +86,7 @@ npm run clean          # Clean build artifacts
 ### **Environment Variables**
 - `YOUTRACK_URL` - YouTrack instance URL
 - `YOUTRACK_TOKEN` - Authentication token
-- `DEFAULT_PROJECT_ID` - Default project for testing
+- `PROJECT_ID` - Default project for testing
 
 ### **MCP Client Configuration**
 Located in `.vscode/mcp.json` for VS Code integration.
