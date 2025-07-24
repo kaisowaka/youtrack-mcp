@@ -664,4 +664,298 @@ export const toolDefinitions = [
       required: ['boardId', 'sprintId'],
     },
   },
+
+  // ===========================
+  // PHASE 3: KNOWLEDGE BASE
+  // ===========================
+  {
+    name: 'list_articles',
+    description: 'List all knowledge base articles with optional filtering',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'Filter articles by project ID (optional)',
+        },
+        query: {
+          type: 'string',
+          description: 'Search query for filtering articles (optional)',
+        },
+        includeContent: {
+          type: 'boolean',
+          description: 'Include full article content in the response',
+        },
+      },
+    },
+  },
+  {
+    name: 'get_article',
+    description: 'Get detailed information about a specific knowledge base article',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        articleId: {
+          type: 'string',
+          description: 'The article ID',
+        },
+        includeComments: {
+          type: 'boolean',
+          description: 'Include article comments and discussions',
+        },
+      },
+      required: ['articleId'],
+    },
+  },
+  {
+    name: 'create_article',
+    description: 'Create a new knowledge base article',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: {
+          type: 'string',
+          description: 'Article title',
+        },
+        summary: {
+          type: 'string',
+          description: 'Brief article summary (optional)',
+        },
+        content: {
+          type: 'string',
+          description: 'Full article content (supports Markdown)',
+        },
+        projectId: {
+          type: 'string',
+          description: 'Project to associate the article with (optional)',
+        },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Tags for categorizing the article (optional)',
+        },
+      },
+      required: ['title', 'content'],
+    },
+  },
+  {
+    name: 'update_article',
+    description: 'Update an existing knowledge base article',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        articleId: {
+          type: 'string',
+          description: 'The article ID to update',
+        },
+        title: {
+          type: 'string',
+          description: 'New article title (optional)',
+        },
+        summary: {
+          type: 'string',
+          description: 'New article summary (optional)',
+        },
+        content: {
+          type: 'string',
+          description: 'New article content (optional)',
+        },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'New tags for the article (optional)',
+        },
+      },
+      required: ['articleId'],
+    },
+  },
+  {
+    name: 'delete_article',
+    description: 'Delete a knowledge base article',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        articleId: {
+          type: 'string',
+          description: 'The article ID to delete',
+        },
+      },
+      required: ['articleId'],
+    },
+  },
+  {
+    name: 'search_articles',
+    description: 'Search knowledge base articles with advanced filtering',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        searchTerm: {
+          type: 'string',
+          description: 'Text to search for in article title, summary, and content',
+        },
+        projectId: {
+          type: 'string',
+          description: 'Filter by project ID (optional)',
+        },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Filter by specific tags (optional)',
+        },
+        includeContent: {
+          type: 'boolean',
+          description: 'Include full article content in search and results',
+        },
+      },
+      required: ['searchTerm'],
+    },
+  },
+  {
+    name: 'get_articles_by_tag',
+    description: 'Get all articles that have a specific tag (category functionality)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tag: {
+          type: 'string',
+          description: 'The tag name to filter by',
+        },
+        projectId: {
+          type: 'string',
+          description: 'Filter by project ID (optional)',
+        },
+        includeContent: {
+          type: 'boolean',
+          description: 'Include full article content in the response',
+        },
+      },
+      required: ['tag'],
+    },
+  },
+  {
+    name: 'get_knowledge_base_stats',
+    description: 'Get comprehensive statistics about the knowledge base',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'Filter statistics by project ID (optional)',
+        },
+      },
+    },
+  },
+
+  // =====================================================
+  // PHASE 4: GANTT CHARTS & DEPENDENCIES
+  // =====================================================
+  {
+    name: 'get_project_timeline',
+    description: 'Get project timeline/Gantt chart data with issue dependencies and scheduling',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'The YouTrack project ID',
+        },
+        startDate: {
+          type: 'string',
+          description: 'Start date for timeline (YYYY-MM-DD format, optional)',
+        },
+        endDate: {
+          type: 'string',
+          description: 'End date for timeline (YYYY-MM-DD format, optional)',
+        },
+        includeCompleted: {
+          type: 'boolean',
+          description: 'Include completed issues in timeline',
+          default: false,
+        },
+      },
+      required: ['projectId'],
+    },
+  },
+  {
+    name: 'create_issue_dependency',
+    description: 'Create a dependency relationship between two issues',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sourceIssueId: {
+          type: 'string',
+          description: 'The issue that depends on another (source)',
+        },
+        targetIssueId: {
+          type: 'string',
+          description: 'The issue that is depended upon (target)',
+        },
+        linkType: {
+          type: 'string',
+          description: 'Type of dependency link (default: "Depends")',
+          default: 'Depends',
+        },
+      },
+      required: ['sourceIssueId', 'targetIssueId'],
+    },
+  },
+  {
+    name: 'get_issue_dependencies',
+    description: 'Get all dependencies for a specific issue including blocking and blocked relationships',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        issueId: {
+          type: 'string',
+          description: 'The issue ID to analyze dependencies for',
+        },
+        includeTransitive: {
+          type: 'boolean',
+          description: 'Include transitive dependencies (dependencies of dependencies)',
+          default: false,
+        },
+      },
+      required: ['issueId'],
+    },
+  },
+  {
+    name: 'get_critical_path',
+    description: 'Analyze critical path for project completion and identify bottlenecks',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'The YouTrack project ID',
+        },
+        targetIssueId: {
+          type: 'string',
+          description: 'Specific target issue to analyze path to (optional)',
+        },
+      },
+      required: ['projectId'],
+    },
+  },
+  {
+    name: 'get_resource_allocation',
+    description: 'Get resource allocation and workload distribution across team members',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'The YouTrack project ID',
+        },
+        startDate: {
+          type: 'string',
+          description: 'Start date for allocation analysis (YYYY-MM-DD format, optional)',
+        },
+        endDate: {
+          type: 'string',
+          description: 'End date for allocation analysis (YYYY-MM-DD format, optional)',
+        },
+      },
+      required: ['projectId'],
+    },
+  },
 ];

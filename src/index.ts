@@ -173,13 +173,6 @@ class YouTrackMCPServer {
             result = await this.youtrackClient.searchUsers(args.query as string);
             break;
 
-          case 'get_project_timeline':
-            result = await this.youtrackClient.getProjectTimeline(
-              args.projectId as string,
-              args.days as number
-            );
-            break;
-
           case 'bulk_update_issues':
             result = await this.youtrackClient.bulkUpdateIssues(
               args.issueIds as string[],
@@ -327,6 +320,115 @@ class YouTrackMCPServer {
               boardId: args.boardId as string,
               sprintId: args.sprintId as string,
               includeBurndown: args.includeBurndown as boolean,
+            });
+            break;
+
+          // ===========================
+          // PHASE 3: KNOWLEDGE BASE
+          // ===========================
+          case 'list_articles':
+            result = await this.youtrackClient.listArticles({
+              projectId: args.projectId as string,
+              query: args.query as string,
+              includeContent: args.includeContent as boolean,
+            });
+            break;
+
+          case 'get_article':
+            result = await this.youtrackClient.getArticle({
+              articleId: args.articleId as string,
+              includeComments: args.includeComments as boolean,
+            });
+            break;
+
+          case 'create_article':
+            result = await this.youtrackClient.createArticle({
+              title: args.title as string,
+              summary: args.summary as string,
+              content: args.content as string,
+              projectId: args.projectId as string,
+              tags: args.tags as string[],
+            });
+            break;
+
+          case 'update_article':
+            result = await this.youtrackClient.updateArticle({
+              articleId: args.articleId as string,
+              title: args.title as string,
+              summary: args.summary as string,
+              content: args.content as string,
+              tags: args.tags as string[],
+            });
+            break;
+
+          case 'delete_article':
+            result = await this.youtrackClient.deleteArticle({
+              articleId: args.articleId as string,
+            });
+            break;
+
+          case 'search_articles':
+            result = await this.youtrackClient.searchArticles({
+              searchTerm: args.searchTerm as string,
+              projectId: args.projectId as string,
+              tags: args.tags as string[],
+              includeContent: args.includeContent as boolean,
+            });
+            break;
+
+          case 'get_articles_by_tag':
+            result = await this.youtrackClient.getArticlesByTag({
+              tag: args.tag as string,
+              projectId: args.projectId as string,
+              includeContent: args.includeContent as boolean,
+            });
+            break;
+
+          case 'get_knowledge_base_stats':
+            result = await this.youtrackClient.getKnowledgeBaseStats({
+              projectId: args.projectId as string,
+            });
+            break;
+
+          // ===========================
+          // PHASE 4: GANTT CHARTS & DEPENDENCIES
+          // ===========================
+          case 'get_project_timeline':
+            result = await this.youtrackClient.getProjectTimeline({
+              projectId: args.projectId as string,
+              startDate: args.startDate as string,
+              endDate: args.endDate as string,
+              includeCompleted: args.includeCompleted as boolean,
+            });
+            break;
+
+          case 'create_issue_dependency':
+            result = await this.youtrackClient.createIssueDependency({
+              sourceIssueId: args.sourceIssueId as string,
+              targetIssueId: args.targetIssueId as string,
+              linkType: args.linkType as string,
+            });
+            break;
+
+          case 'get_issue_dependencies':
+            result = await this.youtrackClient.getIssueDependencies({
+              issueId: args.issueId as string,
+              includeTransitive: args.includeTransitive as boolean,
+            });
+            break;
+
+          case 'get_critical_path':
+            result = await this.youtrackClient.getCriticalPath({
+              projectId: args.projectId as string,
+              targetIssueId: args.targetIssueId as string,
+            });
+            break;
+
+          case 'get_resource_allocation':
+            result = await this.youtrackClient.getResourceAllocation({
+              projectId: args.projectId as string,
+              startDate: args.startDate as string,
+              endDate: args.endDate as string,
             });
             break;
 

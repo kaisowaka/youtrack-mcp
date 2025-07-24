@@ -565,44 +565,6 @@ export class YouTrackClient {
     }
   }
 
-  async getProjectTimeline(projectId: string, days: number = 7): Promise<MCPResponse> {
-    try {
-      const cacheKey = `timeline-${projectId}-${days}`;
-      const cached = this.cache.get<MCPResponse>(cacheKey);
-      if (cached) {
-        return cached;
-      }
-
-      logApiCall('GET', '/activities', { projectId, days });
-
-      const fromDate = new Date();
-      fromDate.setDate(fromDate.getDate() - days);
-
-      const response = await this.api.get('/activities', {
-        params: {
-          categories: 'IssueCreatedCategory,IssueUpdatedCategory',
-          issueQuery: `project: ${projectId}`,
-          start: fromDate.getTime(),
-          fields: 'id,timestamp,category(id),target(id,summary)',
-          $top: 100,
-        },
-      });
-
-      const result = {
-        content: [{
-          type: 'text',
-          text: JSON.stringify(response.data, null, 2),
-        }],
-      };
-
-      this.cache.set(cacheKey, result, 600000); // Cache for 10 minutes
-      return result;
-    } catch (error) {
-      logError(error as Error, { projectId, days });
-      throw new Error(`Failed to get project timeline: ${getErrorMessage(error)}`);
-    }
-  }
-
   async bulkUpdateIssues(issueIds: string[], updates: UpdateIssueParams): Promise<MCPResponse> {
     try {
       logApiCall('POST', '/commands', { issueIds, updates });
@@ -1977,7 +1939,1145 @@ export class YouTrackClient {
     }, {});
   }
 
+  // ===========================
+  // PHASE 3: KNOWLEDGE BASE
+  // ===========================
+
+  /**
+   * List all knowledge base articles
+   */
+  async listArticles(params: {
+    projectId?: string;
+    query?: string;
+    includeContent?: boolean;
+  }): Promise<MCPResponse> {
+    try {
+      let fieldsParam = 'id,title,summary,author(login,fullName),created,updated,project(name,shortName),tags(name),ordinal';
+      if (params.includeContent) {
+        fieldsParam += ',content';
+      }
+
+      const queryParams: any = { fields: fieldsParam };
+      
+      // Build search query
+      if (params.projectId || params.query) {
+        let searchQuery = '';
+        if (params.projectId) {
+          searchQuery += `project: ${params.projectId}`;
+        }
+        if (params.query) {
+          if (searchQuery) searchQuery += ' ';
+          searchQuery += params.query;
+        }
+        queryParams.query = searchQuery;
+      }
+
+      logApiCall('GET', '/articles', queryParams);
+      const response = await this.api.get('/articles', { params: queryParams });
+
+      const articles = response.data || [];
+      
+      // Process articles for better presentation
+      const processedArticles = articles.map((article: any) => ({
+        ...article,
+        createdDate: article.created ? new Date(article.created).toISOString().split('T')[0] : null,
+        updatedDate: article.updated ? new Date(article.updated).toISOString().split('T')[0] : null,
+        contentLength: article.content?.length || 0,
+        tagNames: article.tags?.map((tag: any) => tag.name) || [],
+        authorName: article.author?.fullName || article.author?.login || 'Unknown'
+      }));
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            articles: processedArticles,
+            count: processedArticles.length,
+            filter: {
+              projectId: params.projectId || null,
+              query: params.query || null,
+              includeContent: params.includeContent || false
+            }
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, params);
+      throw new Error(`Failed to list articles: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Get detailed information about a specific article
+   */
+  async getArticle(params: {
+    articleId: string;
+    includeComments?: boolean;
+  }): Promise<MCPResponse> {
+    try {
+      let fieldsParam = 'id,title,summary,content,author(login,fullName),created,updated,project(name,shortName),visibility,attachments(name,url,size),tags(name),ordinal';
+      
+      if (params.includeComments) {
+        fieldsParam += ',comments(text,author(login,fullName),created,updated)';
+      }
+
+      const articleParams = { fields: fieldsParam };
+      logApiCall('GET', `/articles/${params.articleId}`, articleParams);
+      const response = await this.api.get(`/articles/${params.articleId}`, { params: articleParams });
+
+      const article = response.data;
+      
+      // Process article for better presentation
+      const processedArticle = {
+        ...article,
+        createdDate: article.created ? new Date(article.created).toISOString().split('T')[0] : null,
+        updatedDate: article.updated ? new Date(article.updated).toISOString().split('T')[0] : null,
+        contentLength: article.content?.length || 0,
+        tagNames: article.tags?.map((tag: any) => tag.name) || [],
+        authorName: article.author?.fullName || article.author?.login || 'Unknown',
+        attachmentCount: article.attachments?.length || 0,
+        commentCount: article.comments?.length || 0
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            article: processedArticle
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, params);
+      throw new Error(`Failed to get article: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Create a new knowledge base article
+   */
+  async createArticle(params: {
+    title: string;
+    summary?: string;
+    content: string;
+    projectId?: string;
+    tags?: string[];
+  }): Promise<MCPResponse> {
+    try {
+      // Get project details to get the actual project ID
+      let projectId = params.projectId;
+      if (projectId) {
+        try {
+          const projectResponse = await this.api.get(`/admin/projects/${projectId}`);
+          projectId = projectResponse.data.id;
+        } catch (error) {
+          // If getting project details fails, use the projectId as-is
+          logError(error as Error, { message: 'Failed to get project details, using projectId as-is', projectId });
+        }
+      }
+
+      const articleData: any = {
+        summary: params.summary || params.title, // summary is required, use title as fallback
+        content: params.content
+      };
+
+      // Project is required for article creation
+      if (projectId) {
+        articleData.project = { id: projectId };
+      } else {
+        throw new Error('Project ID is required for article creation');
+      }
+
+      // For now, skip tags as they require tag IDs
+      // TODO: Implement tag lookup and creation
+      // if (params.tags && params.tags.length > 0) {
+      //   articleData.tags = params.tags.map(tag => ({ name: tag }));
+      // }
+
+      logApiCall('POST', '/articles', articleData);
+      const response = await this.api.post('/articles', articleData);
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            articleId: response.data.id,
+            message: `Article "${params.title}" created successfully`,
+            article: response.data
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, params);
+      throw new Error(`Failed to create article: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Update an existing knowledge base article
+   */
+  async updateArticle(params: {
+    articleId: string;
+    title?: string;
+    summary?: string;
+    content?: string;
+    tags?: string[];
+  }): Promise<MCPResponse> {
+    try {
+      const updateData: any = {};
+
+      // In YouTrack Articles API, we update 'summary' not 'title'
+      if (params.title) updateData.summary = params.title;
+      if (params.summary) updateData.summary = params.summary;
+      if (params.content) updateData.content = params.content;
+      
+      // For now, skip tags as they require tag IDs
+      // TODO: Implement tag lookup and creation
+      // if (params.tags && params.tags.length > 0) {
+      //   updateData.tags = params.tags.map(tag => ({ name: tag }));
+      // }
+
+      logApiCall('POST', `/articles/${params.articleId}`, updateData);
+      await this.api.post(`/articles/${params.articleId}`, updateData);
+
+      // Get updated article to return
+      const verifyResponse = await this.api.get(`/articles/${params.articleId}`, {
+        params: { fields: 'id,summary,content,updated' }
+      });
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            articleId: params.articleId,
+            message: `Article ${params.articleId} updated successfully`,
+            updatedFields: Object.keys(updateData),
+            article: verifyResponse.data
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, params);
+      throw new Error(`Failed to update article: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Delete a knowledge base article
+   */
+  async deleteArticle(params: {
+    articleId: string;
+  }): Promise<MCPResponse> {
+    try {
+      // Get article info before deletion for confirmation
+      const articleResponse = await this.api.get(`/articles/${params.articleId}`, {
+        params: { fields: 'id,title' }
+      });
+      const articleTitle = articleResponse.data.title;
+
+      logApiCall('DELETE', `/articles/${params.articleId}`, {});
+      await this.api.delete(`/articles/${params.articleId}`);
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            articleId: params.articleId,
+            message: `Article "${articleTitle}" deleted successfully`
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, params);
+      throw new Error(`Failed to delete article: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Search knowledge base articles
+   * Note: Articles API doesn't support query filtering, so we filter client-side
+   */
+  async searchArticles(params: {
+    searchTerm: string;
+    projectId?: string;
+    tags?: string[];
+    includeContent?: boolean;
+  }): Promise<MCPResponse> {
+    try {
+      let fieldsParam = 'id,summary,author(login,fullName),created,updated,project(name,shortName),tags(name)';
+      if (params.includeContent) {
+        fieldsParam += ',content';
+      }
+
+      // Get all articles and filter client-side (Articles API doesn't support query filtering)
+      const queryParams = { fields: fieldsParam };
+
+      logApiCall('GET', '/articles', queryParams);
+      const response = await this.api.get('/articles', { params: queryParams });
+
+      const allArticles = response.data || [];
+      
+      // Client-side filtering
+      let filteredArticles = allArticles;
+      
+      // Filter by project if specified
+      if (params.projectId) {
+        filteredArticles = filteredArticles.filter((article: any) => 
+          article.project?.shortName === params.projectId
+        );
+      }
+      
+      // Filter by tags if specified
+      if (params.tags && params.tags.length > 0) {
+        filteredArticles = filteredArticles.filter((article: any) =>
+          params.tags?.some(tag => 
+            article.tags?.some((articleTag: any) => articleTag.name === tag)
+          )
+        );
+      }
+      
+      // Filter by search term
+      if (params.searchTerm) {
+        const searchLower = params.searchTerm.toLowerCase();
+        filteredArticles = filteredArticles.filter((article: any) => 
+          article.summary?.toLowerCase().includes(searchLower) ||
+          (params.includeContent && article.content?.toLowerCase().includes(searchLower))
+        );
+      }
+
+      // Process articles for better presentation
+      const processedArticles = filteredArticles.map((article: any) => ({
+        ...article,
+        createdDate: article.created ? new Date(article.created).toISOString().split('T')[0] : null,
+        updatedDate: article.updated ? new Date(article.updated).toISOString().split('T')[0] : null,
+        contentLength: article.content?.length || 0,
+        tagNames: article.tags?.map((tag: any) => tag.name) || [],
+        authorName: article.author?.fullName || article.author?.login || 'Unknown',
+        relevanceScore: this.calculateRelevanceScore(article, params.searchTerm)
+      }));
+
+      // Sort by relevance
+      processedArticles.sort((a: any, b: any) => b.relevanceScore - a.relevanceScore);
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            searchTerm: params.searchTerm,
+            results: processedArticles,
+            count: processedArticles.length,
+            totalArticlesChecked: allArticles.length,
+            filters: {
+              projectId: params.projectId || null,
+              tags: params.tags || [],
+              includeContent: params.includeContent || false
+            },
+            note: 'Articles API does not support query filtering - results filtered client-side'
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, params);
+      throw new Error(`Failed to search articles: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Get articles by tags (category-like functionality)
+   * Note: Articles API doesn't support query filtering, so we filter client-side
+   */
+  async getArticlesByTag(params: {
+    tag: string;
+    projectId?: string;
+    includeContent?: boolean;
+  }): Promise<MCPResponse> {
+    try {
+      let fieldsParam = 'id,summary,author(login,fullName),created,updated,project(name,shortName),tags(name)';
+      if (params.includeContent) {
+        fieldsParam += ',content';
+      }
+
+      // Get all articles and filter client-side (Articles API doesn't support query filtering)
+      const queryParams = {
+        fields: fieldsParam
+      };
+
+      logApiCall('GET', '/articles', queryParams);
+      const response = await this.api.get('/articles', { params: queryParams });
+
+      const allArticles = response.data || [];
+      
+      // Filter articles by tag and optionally by project
+      const filteredArticles = allArticles.filter((article: any) => {
+        const hasTag = article.tags?.some((tag: any) => tag.name === params.tag);
+        const matchesProject = !params.projectId || article.project?.shortName === params.projectId;
+        return hasTag && matchesProject;
+      });
+      
+      // Process articles for better presentation
+      const processedArticles = filteredArticles.map((article: any) => ({
+        ...article,
+        createdDate: article.created ? new Date(article.created).toISOString().split('T')[0] : null,
+        updatedDate: article.updated ? new Date(article.updated).toISOString().split('T')[0] : null,
+        contentLength: article.content?.length || 0,
+        tagNames: article.tags?.map((tag: any) => tag.name) || [],
+        authorName: article.author?.fullName || article.author?.login || 'Unknown'
+      }));
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            tag: params.tag,
+            articles: processedArticles,
+            count: processedArticles.length,
+            totalArticlesChecked: allArticles.length,
+            projectId: params.projectId || null,
+            note: 'Articles API does not support query filtering - results filtered client-side'
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, params);
+      throw new Error(`Failed to get articles by tag: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Get knowledge base statistics
+   */
+  async getKnowledgeBaseStats(params: {
+    projectId?: string;
+  }): Promise<MCPResponse> {
+    try {
+      // Get all articles for the project
+      const queryParams: any = {
+        fields: 'id,title,created,updated,author(login),project(shortName),tags(name),content'
+      };
+
+      if (params.projectId) {
+        queryParams.query = `project: ${params.projectId}`;
+      }
+
+      logApiCall('GET', '/articles', queryParams);
+      const response = await this.api.get('/articles', { params: queryParams });
+
+      const articles = response.data || [];
+
+      // Calculate statistics
+      const totalArticles = articles.length;
+      const authorsSet = new Set(articles.map((a: any) => a.author?.login).filter(Boolean));
+      const totalAuthors = authorsSet.size;
+      
+      // Get all unique tags
+      const allTags = articles.flatMap((a: any) => a.tags?.map((t: any) => t.name) || []);
+      const uniqueTags = [...new Set(allTags)];
+      
+      // Calculate content statistics
+      const totalContentLength = articles.reduce((sum: number, a: any) => sum + (a.content?.length || 0), 0);
+      const avgContentLength = totalArticles > 0 ? Math.round(totalContentLength / totalArticles) : 0;
+      
+      // Get recent articles (last 30 days)
+      const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+      const recentArticles = articles.filter((a: any) => 
+        a.created && new Date(a.created).getTime() > thirtyDaysAgo
+      ).length;
+
+      // Group by project
+      const projectStats = this.groupBy(articles, (a: any) => a.project?.shortName || 'Unknown');
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            statistics: {
+              totalArticles,
+              totalAuthors,
+              totalTags: uniqueTags.length,
+              recentArticles,
+              avgContentLength,
+              totalContentLength
+            },
+            breakdown: {
+              byProject: projectStats,
+              topTags: this.getTopTags(allTags, 10),
+              topAuthors: this.getTopAuthors(articles, 5)
+            },
+            filter: {
+              projectId: params.projectId || null
+            }
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, params);
+      throw new Error(`Failed to get knowledge base statistics: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Helper method to calculate relevance score for search results
+   */
+  private calculateRelevanceScore(article: any, searchTerm: string): number {
+    if (!searchTerm) return 0;
+    
+    const searchLower = searchTerm.toLowerCase();
+    let score = 0;
+    
+    // Title match (highest weight)
+    if (article.title?.toLowerCase().includes(searchLower)) {
+      score += 10;
+    }
+    
+    // Summary match (medium weight)
+    if (article.summary?.toLowerCase().includes(searchLower)) {
+      score += 5;
+    }
+    
+    // Content match (lower weight)
+    if (article.content?.toLowerCase().includes(searchLower)) {
+      score += 2;
+    }
+    
+    // Tag match (medium weight)
+    if (article.tags?.some((tag: any) => tag.name?.toLowerCase().includes(searchLower))) {
+      score += 3;
+    }
+    
+    return score;
+  }
+
+  /**
+   * Helper method to get top tags
+   */
+  private getTopTags(allTags: string[], limit: number): Array<{tag: string, count: number}> {
+    const tagCounts = allTags.reduce((counts: Record<string, number>, tag) => {
+      counts[tag] = (counts[tag] || 0) + 1;
+      return counts;
+    }, {});
+    
+    return Object.entries(tagCounts)
+      .map(([tag, count]) => ({ tag, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, limit);
+  }
+
+  /**
+   * Helper method to get top authors
+   */
+  private getTopAuthors(articles: any[], limit: number): Array<{author: string, count: number}> {
+    const authorCounts = articles.reduce((counts: Record<string, number>, article) => {
+      const author = article.author?.login || 'Unknown';
+      counts[author] = (counts[author] || 0) + 1;
+      return counts;
+    }, {});
+    
+    return Object.entries(authorCounts)
+      .map(([author, count]) => ({ author, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, limit);
+  }
+
   get apiInstance(): AxiosInstance {
     return this.api;
+  }
+
+  // =====================================================
+  // PHASE 4: GANTT CHARTS & DEPENDENCIES
+  // =====================================================
+
+  /**
+   * Get project timeline/Gantt data
+   */
+  async getProjectTimeline(params: {
+    projectId: string;
+    startDate?: string;
+    endDate?: string;
+    includeCompleted?: boolean;
+  }): Promise<MCPResponse> {
+    try {
+      const now = new Date();
+      const defaultStartDate = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0]; // Start of year
+      const defaultEndDate = new Date(now.getFullYear() + 1, 0, 1).toISOString().split('T')[0]; // End of year
+
+      const startDate = params.startDate || defaultStartDate;
+      const endDate = params.endDate || defaultEndDate;
+
+      // Build query to get issues with timeline relevance
+      let query = `project: ${params.projectId}`;
+      // Simplified - let client-side filtering handle completion status
+
+      const fieldsParam = 'id,summary,description,state(name),priority(name),assignee(login,fullName),created,resolved,updated,customFields(name,value),links(linkType(name,sourceToTarget,targetToSource),direction,issues(id,summary,state(name)))';
+
+      logApiCall('GET', '/issues', { query, fields: fieldsParam });
+      const response = await this.api.get('/issues', {
+        params: {
+          query,
+          fields: fieldsParam,
+          '$top': 200
+        }
+      });
+
+      const issues = response.data || [];
+
+      // Process issues into timeline format
+      const timelineItems = issues.map((issue: any) => {
+        // Try to extract dates from custom fields or use created/resolved
+        const customFields = issue.customFields || [];
+        const dueDateField = customFields.find((field: any) => 
+          field.name.toLowerCase().includes('due') || 
+          field.name.toLowerCase().includes('deadline')
+        );
+        const startDateField = customFields.find((field: any) => 
+          field.name.toLowerCase().includes('start')
+        );
+
+        const createdDate = issue.created ? new Date(issue.created).toISOString().split('T')[0] : null;
+        const resolvedDate = issue.resolved ? new Date(issue.resolved).toISOString().split('T')[0] : null;
+        const dueDate = dueDateField?.value || null;
+        const itemStartDate = startDateField?.value || createdDate;
+
+        // Calculate dependencies
+        const dependencies = (issue.links || [])
+          .filter((link: any) => 
+            link.linkType?.name?.toLowerCase().includes('depend') ||
+            link.linkType?.sourceToTarget?.toLowerCase().includes('depend')
+          )
+          .map((link: any) => ({
+            type: link.direction === 'OUTWARD' ? 'blocks' : 'depends_on',
+            issues: link.issues || []
+          }));
+
+        return {
+          id: issue.id,
+          title: issue.summary,
+          description: issue.description,
+          status: issue.state?.name || 'Unknown',
+          priority: issue.priority?.name || 'Normal',
+          assignee: issue.assignee?.fullName || issue.assignee?.login || 'Unassigned',
+          startDate: itemStartDate,
+          endDate: resolvedDate || dueDate,
+          dueDate: dueDate,
+          progress: resolvedDate ? 100 : (issue.state?.name === 'In Progress' ? 50 : 0),
+          dependencies,
+          dependencyCount: dependencies.length
+        };
+      });
+
+      // Filter by date range and completion status
+      let filteredItems = timelineItems;
+      
+      // Filter by completion status if requested
+      if (!params.includeCompleted) {
+        filteredItems = filteredItems.filter((item: any) => item.progress < 100);
+      }
+      
+      // Filter by date range if specified
+      filteredItems = filteredItems.filter((item: any) => {
+        if (params.startDate && item.startDate && item.startDate < startDate) return false;
+        if (params.endDate && item.endDate && item.endDate > endDate) return false;
+        return true;
+      });
+
+      // Generate timeline statistics
+      const stats = {
+        totalIssues: filteredItems.length,
+        completedIssues: filteredItems.filter((item: any) => item.progress === 100).length,
+        inProgressIssues: filteredItems.filter((item: any) => item.progress > 0 && item.progress < 100).length,
+        overdueIssues: filteredItems.filter((item: any) => 
+          item.dueDate && new Date(item.dueDate) < now && item.progress < 100
+        ).length,
+        issuesWithDependencies: filteredItems.filter((item: any) => item.dependencyCount > 0).length
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            timeline: {
+              projectId: params.projectId,
+              dateRange: { startDate, endDate },
+              items: filteredItems,
+              statistics: stats
+            }
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, params);
+      throw new Error(`Failed to get project timeline: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Create issue dependency
+   * Note: YouTrack API has limited support for programmatic link creation
+   */
+  async createIssueDependency(params: {
+    sourceIssueId: string;
+    targetIssueId: string;
+    linkType?: string;
+  }): Promise<MCPResponse> {
+    try {
+      // YouTrack uses PUT method for issue links
+      const linkData = {
+        linkType: { name: params.linkType || 'Depends' },
+        issues: [{ id: params.targetIssueId }]
+      };
+
+      logApiCall('PUT', `/issues/${params.sourceIssueId}/links`, linkData);
+      
+      // Try different approaches for creating links
+      let response;
+      try {
+        response = await this.api.put(`/issues/${params.sourceIssueId}/links`, linkData);
+      } catch (putError) {
+        // Try POST method as fallback
+        try {
+          response = await this.api.post(`/issues/${params.sourceIssueId}/links`, linkData);
+        } catch (postError) {
+          // Return informative message about API limitation
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                success: false,
+                limitation: true,
+                message: 'YouTrack API does not support programmatic link creation via REST API',
+                recommendation: 'Use YouTrack web interface to create issue dependencies manually',
+                dependency: {
+                  sourceIssue: params.sourceIssueId,
+                  targetIssue: params.targetIssueId,
+                  linkType: params.linkType || 'Depends'
+                },
+                alternatives: [
+                  'Use YouTrack web interface',
+                  'Use YouTrack command line tool',
+                  'Set up dependencies during issue creation'
+                ]
+              }, null, 2)
+            }]
+          };
+        }
+      }
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            dependency: {
+              sourceIssue: params.sourceIssueId,
+              targetIssue: params.targetIssueId,
+              linkType: params.linkType || 'Depends',
+              message: `Created dependency: ${params.sourceIssueId} depends on ${params.targetIssueId}`
+            }
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, params);
+      
+      // Return informative error for API limitations
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: false,
+            limitation: true,
+            message: 'YouTrack API limitation: Cannot create issue dependencies programmatically',
+            error: (error as Error).message,
+            recommendation: 'Use YouTrack web interface to create dependencies manually',
+            dependency: {
+              sourceIssue: params.sourceIssueId,
+              targetIssue: params.targetIssueId,
+              linkType: params.linkType || 'Depends'
+            }
+          }, null, 2)
+        }]
+      };
+    }
+  }
+
+  /**
+   * Get issue dependencies
+   */
+  async getIssueDependencies(params: {
+    issueId: string;
+    includeTransitive?: boolean;
+  }): Promise<MCPResponse> {
+    try {
+      logApiCall('GET', `/issues/${params.issueId}`, {});
+      const response = await this.api.get(`/issues/${params.issueId}`, {
+        params: {
+          fields: 'id,summary,state(name),links(linkType(name,sourceToTarget,targetToSource),direction,issues(id,summary,state(name),priority(name)))'
+        }
+      });
+
+      const issue = response.data;
+      const links = issue.links || [];
+
+      // Categorize dependencies
+      const dependencies: {
+        dependsOn: Array<{id: string, summary: string, status: string, priority: string, linkType: string}>,
+        blocks: Array<{id: string, summary: string, status: string, priority: string, linkType: string}>,
+        related: Array<{id: string, summary: string, status: string, priority: string, linkType: string}>
+      } = {
+        dependsOn: [], // Issues this issue depends on
+        blocks: [], // Issues this issue blocks
+        related: [] // Other relationships
+      };
+
+      links.forEach((link: any) => {
+        const linkTypeName = link.linkType?.name?.toLowerCase() || '';
+        const sourceToTarget = link.linkType?.sourceToTarget?.toLowerCase() || '';
+        const targetToSource = link.linkType?.targetToSource?.toLowerCase() || '';
+
+        link.issues?.forEach((linkedIssue: any) => {
+          const depInfo = {
+            id: linkedIssue.id,
+            summary: linkedIssue.summary,
+            status: linkedIssue.state?.name || 'Unknown',
+            priority: linkedIssue.priority?.name || 'Normal',
+            linkType: link.linkType?.name || 'Unknown'
+          };
+
+          if (link.direction === 'OUTWARD') {
+            if (linkTypeName.includes('depend') || sourceToTarget.includes('depend')) {
+              dependencies.dependsOn.push(depInfo);
+            } else if (linkTypeName.includes('block') || sourceToTarget.includes('block')) {
+              dependencies.blocks.push(depInfo);
+            } else {
+              dependencies.related.push(depInfo);
+            }
+          } else if (link.direction === 'INWARD') {
+            if (linkTypeName.includes('depend') || targetToSource.includes('depend')) {
+              dependencies.blocks.push(depInfo);
+            } else if (linkTypeName.includes('block') || targetToSource.includes('block')) {
+              dependencies.dependsOn.push(depInfo);
+            } else {
+              dependencies.related.push(depInfo);
+            }
+          } else {
+            dependencies.related.push(depInfo);
+          }
+        });
+      });
+
+      // Calculate dependency metrics
+      const metrics = {
+        totalDependencies: dependencies.dependsOn.length + dependencies.blocks.length + dependencies.related.length,
+        blockedByCount: dependencies.dependsOn.length,
+        blockingCount: dependencies.blocks.length,
+        relatedCount: dependencies.related.length,
+        criticalPath: dependencies.dependsOn.filter((dep: any) => 
+          dep.status !== 'Done' && dep.status !== 'Resolved'
+        ).length > 0
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            issue: {
+              id: issue.id,
+              summary: issue.summary,
+              status: issue.state?.name
+            },
+            dependencies,
+            metrics
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, params);
+      throw new Error(`Failed to get issue dependencies: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Generate critical path analysis
+   */
+  async getCriticalPath(params: {
+    projectId: string;
+    targetIssueId?: string;
+  }): Promise<MCPResponse> {
+    try {
+      // Get all issues with dependencies
+      const query = `project: ${params.projectId}`;
+      const fieldsParam = 'id,summary,state(name),priority(name),created,resolved,customFields(name,value),links(linkType(name),direction,issues(id,summary,state(name)))';
+
+      logApiCall('GET', '/issues', { query, fields: fieldsParam });
+      const response = await this.api.get('/issues', {
+        params: {
+          query,
+          fields: fieldsParam,
+          '$top': 100
+        }
+      });
+
+      const issues = response.data || [];
+
+      // Build dependency graph
+      const dependencyGraph: Record<string, string[]> = {};
+      const issueDetails: Record<string, any> = {};
+
+      issues.forEach((issue: any) => {
+        issueDetails[issue.id] = {
+          id: issue.id,
+          summary: issue.summary,
+          status: issue.state?.name,
+          priority: issue.priority?.name,
+          created: issue.created,
+          resolved: issue.resolved
+        };
+
+        const dependencies: string[] = [];
+        (issue.links || []).forEach((link: any) => {
+          if (link.direction === 'OUTWARD' && 
+              (link.linkType?.name?.toLowerCase().includes('depend') ||
+               link.linkType?.name?.toLowerCase().includes('block'))) {
+            link.issues?.forEach((linkedIssue: any) => {
+              dependencies.push(linkedIssue.id);
+            });
+          }
+        });
+        dependencyGraph[issue.id] = dependencies;
+      });
+
+      // Find critical paths using topological sort with longest path
+      const criticalPaths = this.findCriticalPaths(dependencyGraph, issueDetails, params.targetIssueId);
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            analysis: {
+              projectId: params.projectId,
+              totalIssues: issues.length,
+              issuesWithDependencies: Object.values(dependencyGraph).filter(deps => deps.length > 0).length,
+              criticalPaths,
+              recommendations: this.generatePathRecommendations(criticalPaths)
+            }
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, params);
+      throw new Error(`Failed to analyze critical path: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Get resource allocation across timeline
+   */
+  async getResourceAllocation(params: {
+    projectId: string;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<MCPResponse> {
+    try {
+      const query = `project: ${params.projectId}`;
+      const fieldsParam = 'id,summary,assignee(login,fullName),state(name),priority(name),created,resolved,customFields(name,value)';
+
+      logApiCall('GET', '/issues', { query, fields: fieldsParam });
+      const response = await this.api.get('/issues', {
+        params: {
+          query,
+          fields: fieldsParam,
+          '$top': 200
+        }
+      });
+
+      const issues = response.data || [];
+
+      // Group by assignee
+      const resourceData: Record<string, any> = {};
+
+      issues.forEach((issue: any) => {
+        const assigneeKey = issue.assignee?.login || 'Unassigned';
+        const assigneeName = issue.assignee?.fullName || issue.assignee?.login || 'Unassigned';
+
+        if (!resourceData[assigneeKey]) {
+          resourceData[assigneeKey] = {
+            name: assigneeName,
+            login: assigneeKey,
+            totalIssues: 0,
+            inProgress: 0,
+            todo: 0,
+            highPriority: 0,
+            workload: 'Normal'
+          };
+        }
+
+        const resource = resourceData[assigneeKey];
+        resource.totalIssues++;
+
+        const status = issue.state?.name?.toLowerCase() || '';
+        if (status.includes('progress') || status.includes('active')) {
+          resource.inProgress++;
+        } else {
+          resource.todo++;
+        }
+
+        if (issue.priority?.name === 'Critical' || issue.priority?.name === 'High') {
+          resource.highPriority++;
+        }
+      });
+
+      // Calculate workload levels
+      Object.values(resourceData).forEach((resource: any) => {
+        if (resource.totalIssues > 10) {
+          resource.workload = 'Overloaded';
+        } else if (resource.totalIssues > 6) {
+          resource.workload = 'Heavy';
+        } else if (resource.totalIssues > 3) {
+          resource.workload = 'Normal';
+        } else {
+          resource.workload = 'Light';
+        }
+      });
+
+      const resources = Object.values(resourceData);
+      const summary = {
+        totalResources: resources.length,
+        overloadedResources: resources.filter((r: any) => r.workload === 'Overloaded').length,
+        unassignedIssues: resourceData['Unassigned']?.totalIssues || 0,
+        averageWorkload: Math.round(resources.reduce((sum: number, r: any) => sum + r.totalIssues, 0) / resources.length)
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            allocation: {
+              projectId: params.projectId,
+              resources,
+              summary,
+              recommendations: this.generateResourceRecommendations(resources, summary)
+            }
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, params);
+      throw new Error(`Failed to get resource allocation: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Helper method to find critical paths
+   */
+  private findCriticalPaths(graph: Record<string, string[]>, issueDetails: Record<string, any>, targetId?: string): any[] {
+    // Simple critical path implementation
+    const paths: any[] = [];
+    const visited = new Set<string>();
+
+    const dfs = (issueId: string, currentPath: string[], depth: number) => {
+      if (visited.has(issueId) || depth > 10) return; // Prevent cycles and limit depth
+      
+      visited.add(issueId);
+      currentPath.push(issueId);
+
+      const dependencies = graph[issueId] || [];
+      
+      if (dependencies.length === 0 || (targetId && issueId === targetId)) {
+        // End of path
+        if (currentPath.length > 1) {
+          paths.push({
+            path: currentPath.map(id => ({
+              id,
+              summary: issueDetails[id]?.summary,
+              status: issueDetails[id]?.status,
+              priority: issueDetails[id]?.priority
+            })),
+            length: currentPath.length,
+            isCritical: currentPath.some(id => 
+              issueDetails[id]?.priority === 'Critical' || 
+              issueDetails[id]?.status === 'In Progress'
+            )
+          });
+        }
+      } else {
+        dependencies.forEach(depId => {
+          if (issueDetails[depId]) {
+            dfs(depId, [...currentPath], depth + 1);
+          }
+        });
+      }
+
+      visited.delete(issueId);
+    };
+
+    // Start DFS from each issue
+    Object.keys(graph).forEach(issueId => {
+      if (issueDetails[issueId]) {
+        dfs(issueId, [], 0);
+      }
+    });
+
+    // Return top critical paths
+    return paths
+      .sort((a, b) => b.length - a.length || (b.isCritical ? 1 : 0) - (a.isCritical ? 1 : 0))
+      .slice(0, 5);
+  }
+
+  /**
+   * Helper method to generate path recommendations
+   */
+  private generatePathRecommendations(paths: any[]): string[] {
+    const recommendations: string[] = [];
+    
+    if (paths.length === 0) {
+      recommendations.push('No critical dependencies found. Project has good parallel execution potential.');
+    } else {
+      const longestPath = paths[0];
+      if (longestPath.length > 5) {
+        recommendations.push(`Long dependency chain detected (${longestPath.length} issues). Consider breaking down complex dependencies.`);
+      }
+      
+      const criticalPaths = paths.filter(p => p.isCritical);
+      if (criticalPaths.length > 0) {
+        recommendations.push(`${criticalPaths.length} critical paths found. Focus on resolving high-priority blockers first.`);
+      }
+      
+      recommendations.push('Monitor dependency completion to prevent project delays.');
+    }
+    
+    return recommendations;
+  }
+
+  /**
+   * Helper method to generate resource recommendations
+   */
+  private generateResourceRecommendations(resources: any[], summary: any): string[] {
+    const recommendations: string[] = [];
+    
+    if (summary.overloadedResources > 0) {
+      recommendations.push(`${summary.overloadedResources} team members are overloaded. Consider redistributing work.`);
+    }
+    
+    if (summary.unassignedIssues > 0) {
+      recommendations.push(`${summary.unassignedIssues} issues are unassigned. Assign them to team members.`);
+    }
+    
+    const lightWorkload = resources.filter((r: any) => r.workload === 'Light');
+    if (lightWorkload.length > 0 && summary.overloadedResources > 0) {
+      recommendations.push(`${lightWorkload.length} team members have light workload. Consider task rebalancing.`);
+    }
+    
+    return recommendations;
   }
 }
