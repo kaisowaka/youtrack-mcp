@@ -6,7 +6,6 @@
  */
 
 import { YouTrackClient } from '../src/youtrack-client.js';
-import { ProductionEnhancedYouTrackClient } from '../src/utils/production-enhanced-client.js';
 
 // Simple test framework
 class SimpleTest {
@@ -111,44 +110,42 @@ async function runTests() {
     });
   });
 
-  test.describe('EnhancedYouTrackClient Integration', () => {
+  test.describe('Consolidated YouTrackClient Methods', () => {
     const client = new YouTrackClient(mockEnv.YOUTRACK_URL, mockEnv.YOUTRACK_TOKEN);
-    const enhancedClient = new ProductionEnhancedYouTrackClient(client.apiInstance);
     
-    test.it('should create enhanced client with API instance', () => {
-      test.expect(enhancedClient).toBeDefined();
+    test.it('should have all consolidated methods', () => {
+      test.expect(client).toBeDefined();
     });
     
     test.it('should have epic management methods', () => {
-      test.expect(typeof enhancedClient.createEpic).toBe('function');
-      test.expect(typeof enhancedClient.linkIssueToEpic).toBe('function');
-      test.expect(typeof enhancedClient.getEpicProgress).toBe('function');
+      test.expect(typeof client.createEpic).toBe('function');
+      test.expect(typeof client.linkIssueToEpic).toBe('function');
+      test.expect(typeof client.getEpicProgress).toBe('function');
     });
     
     test.it('should have milestone management methods', () => {
-      test.expect(typeof enhancedClient.createMilestone).toBe('function');
-      test.expect(typeof enhancedClient.assignIssuesToMilestone).toBe('function');
-      test.expect(typeof enhancedClient.getMilestoneProgress).toBe('function');
+      test.expect(typeof client.createMilestone).toBe('function');
+      test.expect(typeof client.assignIssuesToMilestone).toBe('function');
+      test.expect(typeof client.getMilestoneProgress).toBe('function');
     });
     
     test.it('should have time tracking methods', () => {
-      test.expect(typeof enhancedClient.logWorkTime).toBe('function');
-      test.expect(typeof enhancedClient.getTimeReport).toBe('function');
+      test.expect(typeof client.logWorkTime).toBe('function');
     });
     
-    test.it('should have analytics methods', () => {
-      test.expect(typeof enhancedClient.getProjectVelocity).toBe('function');
-      test.expect(typeof enhancedClient.getBurndownChartData).toBe('function');
-      test.expect(typeof enhancedClient.getTeamWorkload).toBe('function');
-      test.expect(typeof enhancedClient.assessProjectRisks).toBe('function');
+    test.it('should have enhanced statistics methods', () => {
+      test.expect(typeof client.getProjectStats).toBe('function');
+      test.expect(typeof client.getProjectCustomFields).toBe('function');
     });
   });
 
-  test.describe('Utility Functions', () => {
-    test.it('should parse duration strings correctly', () => {
-      // These are private methods, so we test through public interface
-      // The logWorkTime method should handle duration parsing
-      test.expect(typeof ProductionEnhancedYouTrackClient).toBe('function');
+  test.describe('Consolidated Client Architecture', () => {
+    test.it('should have single unified client', () => {
+      const client = new YouTrackClient(mockEnv.YOUTRACK_URL, mockEnv.YOUTRACK_TOKEN);
+      test.expect(client).toBeDefined();
+      test.expect(typeof client.listProjects).toBe('function');
+      test.expect(typeof client.updateIssue).toBe('function');
+      test.expect(typeof client.createEpic).toBe('function');
     });
   });
 

@@ -10,7 +10,6 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import dotenv from 'dotenv';
 import { YouTrackClient, MCPResponse } from './youtrack-client.js';
-import { ProductionEnhancedYouTrackClient } from './utils/production-enhanced-client.js';
 import { ConfigManager } from './config.js';
 import { toolDefinitions } from './tools.js';
 import { logger } from './logger.js';
@@ -22,7 +21,6 @@ dotenv.config();
 class YouTrackMCPServer {
   private server: Server;
   private youtrackClient: YouTrackClient;
-  private enhancedClient: ProductionEnhancedYouTrackClient;
   private config: ConfigManager;
   private webhookHandler?: WebhookHandler;
 
@@ -31,8 +29,15 @@ class YouTrackMCPServer {
     this.config.validate();
 
     const { youtrackUrl, youtrackToken } = this.config.get();
+    logger.info('Initializing YouTrack MCP Server', { 
+      url: youtrackUrl, 
+      tokenLength: youtrackToken?.length,
+      hasToken: !!youtrackToken 
+    });
+    
+    // Use single consolidated YouTrack client
     this.youtrackClient = new YouTrackClient(youtrackUrl, youtrackToken);
-    this.enhancedClient = new ProductionEnhancedYouTrackClient(this.youtrackClient.apiInstance);
+    logger.info('Consolidated YouTrack client initialized successfully');
 
     this.server = new Server(
       {
@@ -62,11 +67,64 @@ class YouTrackMCPServer {
         let result: MCPResponse;
         
         switch (name) {
+          case 'list_projects':
+            logger.info('Executing list_projects with consolidated client');
+            
+            // Diagnostic info
+            const { youtrackUrl, youtrackToken } = this.config.get();
+            logger.info('Config details for list_projects', { 
+              url: youtrackUrl, 
+              tokenLength: youtrackToken?.length 
+            });
+            
+            try {
+              const projects = await this.youtrackClient.listProjects(args.fields as string);
+              logger.info('Successfully retrieved projects', { count: projects.length });
+              result = {
+                content: [{
+                  type: 'text',
+                  text: JSON.stringify(projects, null, 2)
+                }]
+              };
+            } catch (error) {
+              logger.error('Consolidated client error in list_projects', { 
+                error: (error as Error).message,
+                stack: (error as Error).stack
+              });
+              throw error;
+            }
+            break;
+
+          case 'validate_project':
+            logger.info('Executing validate_project with consolidated client', { projectId: args.projectId });
+            const validation = await this.youtrackClient.validateProject(args.projectId as string);
+            logger.info('Successfully validated project', { result: validation });
+            result = {
+              content: [{
+                type: 'text',
+                text: JSON.stringify(validation, null, 2)
+              }]
+            };
+            break;
+
           case 'get_project_status':
-            result = await this.youtrackClient.getProjectStatus(
-              args.projectId as string,
-              (args.includeIssues as boolean) ?? true
-            );
+            const stats = await this.youtrackClient.getProjectStats(args.projectId as string);
+            result = {
+              content: [{
+                type: 'text',
+                text: JSON.stringify(stats, null, 2)
+              }]
+            };
+            break;
+
+          case 'get_project_custom_fields':
+            const customFields = await this.youtrackClient.getProjectCustomFields(args.projectId as string);
+            result = {
+              content: [{
+                type: 'text',
+                text: JSON.stringify(customFields, null, 2)
+              }]
+            };
             break;
 
           case 'create_issue':
@@ -131,7 +189,7 @@ class YouTrackMCPServer {
 
           // Enhanced Epic & Milestone Management Tools
           case 'create_epic':
-            result = await this.enhancedClient.createEpic({
+            result = await this.youtrackClient.createEpic({
               projectId: args.projectId as string,
               title: args.summary as string,
               description: args.description as string,
@@ -141,38 +199,39 @@ class YouTrackMCPServer {
             break;
 
           case 'link_issue_to_epic':
-            result = await this.enhancedClient.linkIssueToEpic({
+            result = await this.youtrackClient.linkIssueToEpic({
               issueId: args.issueId as string,
               epicId: args.epicId as string,
             });
             break;
 
           case 'get_epic_progress':
-            result = await this.enhancedClient.getEpicProgress(args.epicId as string);
+            result = await this.youtrackClient.getEpicProgress(args.epicId as string);
             break;
 
           case 'create_milestone':
-            result = await this.enhancedClient.createMilestone({
+            result = await this.youtrackClient.createMilestone({
               projectId: args.projectId as string,
-              title: args.name as string,
-              description: args.description as string,
+              name: args.name as string,
               targetDate: args.targetDate as string,
+              description: args.description as string,
+              criteria: args.criteria as string[],
             });
             break;
 
           case 'assign_issues_to_milestone':
-            result = await this.enhancedClient.assignIssuesToMilestone({
+            result = await this.youtrackClient.assignIssuesToMilestone({
               milestoneId: args.milestoneId as string,
               issueIds: args.issueIds as string[],
             });
             break;
 
           case 'get_milestone_progress':
-            result = await this.enhancedClient.getMilestoneProgress(args.milestoneId as string);
+            result = await this.youtrackClient.getMilestoneProgress(args.milestoneId as string);
             break;
 
           case 'log_work_time':
-            result = await this.enhancedClient.logWorkTime({
+            result = await this.youtrackClient.logWorkTime({
               issueId: args.issueId as string,
               duration: args.duration as string,
               date: args.date as string,

@@ -46,51 +46,58 @@ describe('YouTrackClient', () => {
     client = new YouTrackClient('https://test.youtrack.cloud', 'test-token');
   });
 
-  describe('getProjectStatus', () => {
-    it('should fetch project status successfully', async () => {
-      const mockProject = { id: 'TEST', name: 'Test Project', shortName: 'TST' };
+  describe('getProjectStats', () => {
+    it('should fetch project statistics successfully', async () => {
+      const mockValidation = { 
+        exists: true, 
+        accessible: true, 
+        project: { id: 'TEST', name: 'Test Project', shortName: 'TST' },
+        message: 'Project found successfully'
+      };
       const mockIssues = [
-        { id: 'TEST-1', state: { name: 'Open' } },
-        { id: 'TEST-2', state: { name: 'Closed' } },
-        { id: 'TEST-3', state: { name: 'Open' } },
+        { id: 'TEST-1', state: { name: 'Open' }, priority: { name: 'High' }, type: { name: 'Bug' }, created: new Date().toISOString() },
+        { id: 'TEST-2', state: { name: 'Closed' }, priority: { name: 'Normal' }, type: { name: 'Feature' }, created: new Date().toISOString() },
+        { id: 'TEST-3', state: { name: 'Open' }, priority: { name: 'High' }, type: { name: 'Bug' }, created: new Date().toISOString() },
       ];
 
-      mockAxiosInstance.get
-        .mockResolvedValueOnce({ data: mockProject })
-        .mockResolvedValueOnce({ data: mockIssues });
+      // Mock validateProject call
+      jest.spyOn(client, 'validateProject').mockResolvedValueOnce(mockValidation);
+      
+      mockAxiosInstance.get.mockResolvedValueOnce({ data: mockIssues });
 
-      const result: MCPResponse = await client.getProjectStatus('TEST', true);
+      const result = await client.getProjectStats('TEST');
       
-      expect(result).toHaveProperty('content');
-      expect(Array.isArray(result.content)).toBe(true);
-      expect(result.content[0]).toHaveProperty('text');
-      expect(result.content[0].text).toContain('Test Project');
-      expect(result.content[0].text).toContain('Open');
-      expect(result.content[0].text).toContain('Closed');
-      
-      const parsedResult = JSON.parse(result.content[0].text);
-      expect(parsedResult.project.name).toBe('Test Project');
-      expect(parsedResult.issueStatistics.byState.Open).toBe(2);
-      expect(parsedResult.issueStatistics.byState.Closed).toBe(1);
+      expect(result).toHaveProperty('project');
+      expect(result).toHaveProperty('totalIssues', 3);
+      expect(result).toHaveProperty('byState');
+      expect(result).toHaveProperty('byPriority');
+      expect(result).toHaveProperty('byType');
+      expect(result.byState.Open).toBe(2);
+      expect(result.byState.Closed).toBe(1);
+      expect(result.byPriority.High).toBe(2);
+      expect(result.byPriority.Normal).toBe(1);
     });
 
-    it('should handle project without issues', async () => {
-      const mockProject = { id: 'TEST', name: 'Test Project' };
+    it('should handle project not found', async () => {
+      const mockValidation = { exists: false, accessible: false, message: 'Project not found' };
+      jest.spyOn(client, 'validateProject').mockResolvedValueOnce(mockValidation);
 
-      mockAxiosInstance.get.mockResolvedValueOnce({ data: mockProject });
-
-      const result = await client.getProjectStatus('TEST', false);
-      
-      const parsedResult = JSON.parse(result.content[0].text);
-      expect(parsedResult.project.name).toBe('Test Project');
-      expect(parsedResult.issueStatistics).toBeUndefined();
+      await expect(client.getProjectStats('TEST'))
+        .rejects.toThrow('Project \'TEST\' not found');
     });
 
     it('should handle API errors', async () => {
+      const mockValidation = { 
+        exists: true, 
+        accessible: true, 
+        project: { id: 'TEST' },
+        message: 'Project found successfully'
+      };
+      jest.spyOn(client, 'validateProject').mockResolvedValueOnce(mockValidation);
       mockAxiosInstance.get.mockRejectedValueOnce(new Error('Network error'));
 
-      await expect(client.getProjectStatus('TEST', true))
-        .rejects.toThrow('Failed to get project status: Network error');
+      await expect(client.getProjectStats('TEST'))
+        .rejects.toThrow('Failed to get project statistics: Network error');
     });
   });
 

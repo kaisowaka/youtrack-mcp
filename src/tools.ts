@@ -1,18 +1,55 @@
 export const toolDefinitions = [
   {
-    name: 'get_project_status',
-    description: 'Get current status and statistics of a YouTrack project',
+    name: 'list_projects',
+    description: 'List all available YouTrack projects that the user has access to',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        fields: {
+          type: 'string',
+          description: 'Fields to return for each project (comma-separated)',
+          default: 'id,name,shortName,description',
+        },
+      },
+    },
+  },
+  {
+    name: 'validate_project',
+    description: 'Validate if a project exists and check user permissions',
     inputSchema: {
       type: 'object',
       properties: {
         projectId: {
           type: 'string',
-          description: 'The YouTrack project ID',
+          description: 'The YouTrack project ID to validate',
         },
-        includeIssues: {
-          type: 'boolean',
-          description: 'Include issue statistics',
-          default: true,
+      },
+      required: ['projectId'],
+    },
+  },
+  {
+    name: 'get_project_status',
+    description: 'Get comprehensive project statistics and health metrics using the correct API',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'The YouTrack project shortName or ID',
+        },
+      },
+      required: ['projectId'],
+    },
+  },
+  {
+    name: 'get_project_custom_fields',
+    description: 'Get available custom fields and their possible values for a project',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'The YouTrack project shortName or ID',
         },
       },
       required: ['projectId'],
@@ -74,7 +111,7 @@ export const toolDefinitions = [
   },
   {
     name: 'update_issue',
-    description: 'Update an existing issue in YouTrack',
+    description: 'Update an existing issue with enhanced field support (state, priority, type, assignee, subsystem, etc.)',
     inputSchema: {
       type: 'object',
       properties: {
@@ -84,13 +121,43 @@ export const toolDefinitions = [
         },
         updates: {
           type: 'object',
-          description: 'Fields to update',
+          description: 'Fields to update with enhanced support',
           properties: {
-            summary: { type: 'string' },
-            description: { type: 'string' },
-            state: { type: 'string' },
-            assignee: { type: 'string' },
-            priority: { type: 'string' },
+            summary: { type: 'string', description: 'Issue title/summary' },
+            description: { type: 'string', description: 'Issue description' },
+            state: { 
+              type: 'string', 
+              description: 'Issue state (e.g., "Open", "In Progress", "Done", "Resolved")' 
+            },
+            priority: { 
+              type: 'string', 
+              description: 'Issue priority (e.g., "Critical", "High", "Normal", "Low")' 
+            },
+            type: { 
+              type: 'string', 
+              description: 'Issue type (e.g., "Bug", "Feature", "Task", "Epic")' 
+            },
+            assignee: { 
+              type: 'string', 
+              description: 'Assignee login (username) or null to unassign' 
+            },
+            subsystem: { 
+              type: 'string', 
+              description: 'Subsystem/component name' 
+            },
+            dueDate: { 
+              type: 'string', 
+              description: 'Due date in YYYY-MM-DD format' 
+            },
+            estimation: { 
+              type: 'number', 
+              description: 'Time estimation in minutes' 
+            },
+            tags: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Array of tag names'
+            }
           },
         },
       },
