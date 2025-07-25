@@ -470,6 +470,40 @@ class YouTrackMCPServer {
             result = await this.youtrackClient.getAllProjectFieldsSummary();
             break;
 
+          case 'generate_gantt_chart':
+            result = await this.youtrackClient.generateGanttChart({
+              projectId: args.projectId as string,
+              startDate: args.startDate as string,
+              endDate: args.endDate as string,
+              includeCompleted: args.includeCompleted as boolean,
+              includeCriticalPath: args.includeCriticalPath as boolean,
+              includeResources: args.includeResources as boolean,
+              hierarchicalView: args.hierarchicalView as boolean
+            });
+            break;
+
+          case 'route_issue_dependencies':
+            result = await this.youtrackClient.routeIssueDependencies({
+              projectId: args.projectId as string,
+              sourceIssueId: args.sourceIssueId as string,
+              targetIssueId: args.targetIssueId as string,
+              dependencyType: args.dependencyType as 'FS' | 'SS' | 'FF' | 'SF',
+              lag: args.lag as number,
+              constraint: args.constraint as 'hard' | 'soft'
+            });
+            break;
+
+          case 'analyze_dependency_network':
+            result = await this.youtrackClient.analyzeDependencyNetwork(args.projectId as string);
+            break;
+
+          case 'calculate_critical_path':
+            result = await this.youtrackClient.calculateCriticalPath({
+              projectId: args.projectId as string,
+              targetIssueId: args.targetIssueId as string
+            });
+            break;
+
           default:
             throw new McpError(
               ErrorCode.MethodNotFound,

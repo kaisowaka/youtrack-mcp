@@ -893,11 +893,125 @@ export const toolDefinitions = [
   },
 
   // =====================================================
-  // PHASE 4: GANTT CHARTS & DEPENDENCIES
+  // PHASE 4: GANTT CHARTS & ADVANCED PROJECT MANAGEMENT
   // =====================================================
   {
+    name: 'generate_gantt_chart',
+    description: 'Generate comprehensive Gantt chart with dependencies, critical path analysis, and resource allocation',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'The YouTrack project ID',
+        },
+        startDate: {
+          type: 'string',
+          description: 'Start date for chart (YYYY-MM-DD format, optional)',
+        },
+        endDate: {
+          type: 'string',
+          description: 'End date for chart (YYYY-MM-DD format, optional)',
+        },
+        includeCompleted: {
+          type: 'boolean',
+          description: 'Include completed issues in chart',
+          default: false,
+        },
+        includeCriticalPath: {
+          type: 'boolean',
+          description: 'Include critical path analysis',
+          default: true,
+        },
+        includeResources: {
+          type: 'boolean',
+          description: 'Include resource allocation analysis',
+          default: false,
+        },
+        hierarchicalView: {
+          type: 'boolean',
+          description: 'Show hierarchical task structure',
+          default: false,
+        },
+      },
+      required: ['projectId'],
+    },
+  },
+  {
+    name: 'create_gantt_dependency',
+    description: 'Create issue dependency with specific relationship type (Finish-to-Start, Start-to-Start, etc.)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sourceIssueId: {
+          type: 'string',
+          description: 'The source issue ID',
+        },
+        targetIssueId: {
+          type: 'string',
+          description: 'The target issue ID',
+        },
+        dependencyType: {
+          type: 'string',
+          enum: ['FS', 'SS', 'FF', 'SF'],
+          description: 'Dependency type: FS (Finish-to-Start), SS (Start-to-Start), FF (Finish-to-Finish), SF (Start-to-Finish)',
+          default: 'FS',
+        },
+        lag: {
+          type: 'number',
+          description: 'Lag time in days (positive) or lead time (negative)',
+          default: 0,
+        },
+        constraint: {
+          type: 'string',
+          enum: ['hard', 'soft'],
+          description: 'Constraint type: hard (must be enforced) or soft (preferred)',
+          default: 'hard',
+        },
+      },
+      required: ['sourceIssueId', 'targetIssueId'],
+    },
+  },
+  {
+    name: 'analyze_resource_conflicts',
+    description: 'Analyze resource conflicts and overallocations across project timeline',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'The YouTrack project ID to analyze',
+        },
+      },
+      required: ['projectId'],
+    },
+  },
+  {
+    name: 'get_enhanced_critical_path',
+    description: 'Get enhanced critical path analysis with bottlenecks, slack times, and optimization suggestions',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'The YouTrack project ID',
+        },
+        targetMilestone: {
+          type: 'string',
+          description: 'Target milestone issue ID (optional)',
+        },
+        includeSlack: {
+          type: 'boolean',
+          description: 'Include slack time analysis for all tasks',
+          default: false,
+        },
+      },
+      required: ['projectId'],
+    },
+  },
+  {
     name: 'get_project_timeline',
-    description: 'Get project timeline/Gantt chart data with issue dependencies and scheduling',
+    description: 'Get project timeline/Gantt chart data with issue dependencies and scheduling (legacy - use generate_gantt_chart for full features)',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1108,6 +1222,119 @@ export const toolDefinitions = [
     inputSchema: {
       type: 'object',
       properties: {},
+    },
+  },
+  {
+    name: 'generate_gantt_chart',
+    description: 'Generate comprehensive Gantt chart with dependencies, critical path analysis, and resource allocation for project timeline visualization',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'The YouTrack project ID or shortName to generate Gantt chart for',
+        },
+        startDate: {
+          type: 'string',
+          description: 'Start date for timeline filter (YYYY-MM-DD format, optional)',
+        },
+        endDate: {
+          type: 'string',
+          description: 'End date for timeline filter (YYYY-MM-DD format, optional)',
+        },
+        includeCompleted: {
+          type: 'boolean',
+          description: 'Include completed issues in the chart (default: true)',
+          default: true,
+        },
+        includeCriticalPath: {
+          type: 'boolean',
+          description: 'Include critical path analysis (default: true)',
+          default: true,
+        },
+        includeResources: {
+          type: 'boolean',
+          description: 'Include resource allocation analysis (default: true)',
+          default: true,
+        },
+        hierarchicalView: {
+          type: 'boolean',
+          description: 'Show hierarchical issue structure (default: false)',
+          default: false,
+        },
+      },
+      required: ['projectId'],
+    },
+  },
+  {
+    name: 'route_issue_dependencies',
+    description: 'Create and manage sophisticated dependency relationships between issues with circular dependency detection and timeline impact analysis',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'The YouTrack project ID containing the issues',
+        },
+        sourceIssueId: {
+          type: 'string',
+          description: 'The source issue ID that depends on or affects the target',
+        },
+        targetIssueId: {
+          type: 'string',
+          description: 'The target issue ID that the source depends on or affects',
+        },
+        dependencyType: {
+          type: 'string',
+          enum: ['FS', 'SS', 'FF', 'SF'],
+          description: 'Dependency type: FS (Finish-to-Start), SS (Start-to-Start), FF (Finish-to-Finish), SF (Start-to-Finish)',
+          default: 'FS',
+        },
+        lag: {
+          type: 'number',
+          description: 'Number of days lag time between dependencies (can be negative for lead time)',
+          default: 0,
+        },
+        constraint: {
+          type: 'string',
+          enum: ['hard', 'soft'],
+          description: 'Constraint type: hard (must be respected) or soft (preferred but flexible)',
+          default: 'hard',
+        },
+      },
+      required: ['projectId', 'sourceIssueId', 'targetIssueId'],
+    },
+  },
+  {
+    name: 'analyze_dependency_network',
+    description: 'Analyze project dependency network topology, identify bottlenecks, clusters, and generate health metrics for complex project structures',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'The YouTrack project ID to analyze dependency network for',
+        },
+      },
+      required: ['projectId'],
+    },
+  },
+  {
+    name: 'calculate_critical_path',
+    description: 'Perform detailed critical path analysis to identify the longest sequence of dependent activities and potential project bottlenecks',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'The YouTrack project ID to analyze critical path for',
+        },
+        targetIssueId: {
+          type: 'string',
+          description: 'Specific target issue to analyze path to (optional)',
+        },
+      },
+      required: ['projectId'],
     },
   },
 ];

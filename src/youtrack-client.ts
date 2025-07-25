@@ -5,6 +5,7 @@ import { SimpleCache } from './cache.js';
 import { CustomFieldsManager, CustomFieldValue } from './custom-fields-manager.js';
 import { FieldSelector } from './field-selector.js';
 import { DynamicProjectFieldManager, ProjectFieldsInfo } from './dynamic-field-manager.js';
+import { GanttChartManager } from './utils/gantt-chart-manager.js';
 
 export interface MCPResponse {
   content: Array<{
@@ -327,6 +328,7 @@ export class YouTrackClient {
   private cache: SimpleCache;
   private customFieldsManager: CustomFieldsManager;
   private dynamicFieldManager: DynamicProjectFieldManager;
+  private ganttChartManager: GanttChartManager;
 
   constructor(baseUrl: string, token: string) {
     this.cache = new SimpleCache();
@@ -344,6 +346,7 @@ export class YouTrackClient {
     // Initialize field managers
     this.customFieldsManager = new CustomFieldsManager(this.api, this.cache);
     this.dynamicFieldManager = new DynamicProjectFieldManager(this.api, this.cache);
+    this.ganttChartManager = new GanttChartManager(this);
 
     // Add retry logic for transient failures
     axiosRetry(this.api, {
@@ -2993,9 +2996,57 @@ export class YouTrackClient {
   // =====================================================
   // PHASE 4: GANTT CHARTS & DEPENDENCIES
   // =====================================================
+  // GANTT CHARTS & ADVANCED PROJECT MANAGEMENT
+  // =====================================================
 
   /**
-   * Get project timeline/Gantt data
+   * Generate comprehensive Gantt chart with dependencies, critical path, and resource analysis
+   */
+  async generateGanttChart(params: {
+    projectId: string;
+    startDate?: string;
+    endDate?: string;
+    includeCompleted?: boolean;
+    includeCriticalPath?: boolean;
+    includeResources?: boolean;
+    hierarchicalView?: boolean;
+  }): Promise<MCPResponse> {
+    return this.ganttChartManager.generateGanttChart(params);
+  }
+
+  /**
+   * Create issue dependency with Gantt-specific relationship types
+   */
+  async createGanttDependency(params: {
+    sourceIssueId: string;
+    targetIssueId: string;
+    dependencyType: 'FS' | 'SS' | 'FF' | 'SF';
+    lag?: number;
+    constraint?: 'hard' | 'soft';
+  }): Promise<MCPResponse> {
+    return this.ganttChartManager.createIssueDependency(params);
+  }
+
+  /**
+   * Analyze resource conflicts and overallocations across project timeline
+   */
+  async analyzeResourceConflicts(projectId: string): Promise<MCPResponse> {
+    return this.ganttChartManager.analyzeResourceConflicts(projectId);
+  }
+
+  /**
+   * Get enhanced critical path analysis with bottlenecks and optimization suggestions
+   */
+  async getEnhancedCriticalPath(params: {
+    projectId: string;
+    targetMilestone?: string;
+    includeSlack?: boolean;
+  }): Promise<MCPResponse> {
+    return this.ganttChartManager.getCriticalPathAnalysis(params);
+  }
+
+  /**
+   * Get project timeline/Gantt data (legacy method - redirects to enhanced Gantt chart)
    */
   async getProjectTimeline(params: {
     projectId: string;
@@ -3003,119 +3054,13 @@ export class YouTrackClient {
     endDate?: string;
     includeCompleted?: boolean;
   }): Promise<MCPResponse> {
-    try {
-      const now = new Date();
-      const defaultStartDate = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0]; // Start of year
-      const defaultEndDate = new Date(now.getFullYear() + 1, 0, 1).toISOString().split('T')[0]; // End of year
-
-      const startDate = params.startDate || defaultStartDate;
-      const endDate = params.endDate || defaultEndDate;
-
-      // Build query to get issues with timeline relevance
-      let query = `project: ${params.projectId}`;
-      // Simplified - let client-side filtering handle completion status
-
-      const fieldsParam = 'id,summary,description,state(name),priority(name),assignee(login,fullName),created,resolved,updated,customFields(name,value),links(linkType(name,sourceToTarget,targetToSource),direction,issues(id,summary,state(name)))';
-
-      logApiCall('GET', '/issues', { query, fields: fieldsParam });
-      const response = await this.api.get('/issues', {
-        params: {
-          query,
-          fields: fieldsParam,
-          '$top': 200
-        }
-      });
-
-      const issues = response.data || [];
-
-      // Process issues into timeline format
-      const timelineItems = issues.map((issue: any) => {
-        // Try to extract dates from custom fields or use created/resolved
-        const customFields = issue.customFields || [];
-        const dueDateField = customFields.find((field: any) => 
-          field.name.toLowerCase().includes('due') || 
-          field.name.toLowerCase().includes('deadline')
-        );
-        const startDateField = customFields.find((field: any) => 
-          field.name.toLowerCase().includes('start')
-        );
-
-        const createdDate = issue.created ? new Date(issue.created).toISOString().split('T')[0] : null;
-        const resolvedDate = issue.resolved ? new Date(issue.resolved).toISOString().split('T')[0] : null;
-        const dueDate = dueDateField?.value || null;
-        const itemStartDate = startDateField?.value || createdDate;
-
-        // Calculate dependencies
-        const dependencies = (issue.links || [])
-          .filter((link: any) => 
-            link.linkType?.name?.toLowerCase().includes('depend') ||
-            link.linkType?.sourceToTarget?.toLowerCase().includes('depend')
-          )
-          .map((link: any) => ({
-            type: link.direction === 'OUTWARD' ? 'blocks' : 'depends_on',
-            issues: link.issues || []
-          }));
-
-        return {
-          id: issue.id,
-          title: issue.summary,
-          description: issue.description,
-          status: issue.state?.name || 'Unknown',
-          priority: issue.priority?.name || 'Normal',
-          assignee: issue.assignee?.fullName || issue.assignee?.login || 'Unassigned',
-          startDate: itemStartDate,
-          endDate: resolvedDate || dueDate,
-          dueDate: dueDate,
-          progress: resolvedDate ? 100 : (issue.state?.name === 'In Progress' ? 50 : 0),
-          dependencies,
-          dependencyCount: dependencies.length
-        };
-      });
-
-      // Filter by date range and completion status
-      let filteredItems = timelineItems;
-      
-      // Filter by completion status if requested
-      if (!params.includeCompleted) {
-        filteredItems = filteredItems.filter((item: any) => item.progress < 100);
-      }
-      
-      // Filter by date range if specified
-      filteredItems = filteredItems.filter((item: any) => {
-        if (params.startDate && item.startDate && item.startDate < startDate) return false;
-        if (params.endDate && item.endDate && item.endDate > endDate) return false;
-        return true;
-      });
-
-      // Generate timeline statistics
-      const stats = {
-        totalIssues: filteredItems.length,
-        completedIssues: filteredItems.filter((item: any) => item.progress === 100).length,
-        inProgressIssues: filteredItems.filter((item: any) => item.progress > 0 && item.progress < 100).length,
-        overdueIssues: filteredItems.filter((item: any) => 
-          item.dueDate && new Date(item.dueDate) < now && item.progress < 100
-        ).length,
-        issuesWithDependencies: filteredItems.filter((item: any) => item.dependencyCount > 0).length
-      };
-
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify({
-            success: true,
-            timeline: {
-              projectId: params.projectId,
-              dateRange: { startDate, endDate },
-              items: filteredItems,
-              statistics: stats
-            }
-          }, null, 2)
-        }]
-      };
-    } catch (error) {
-      logError(error as Error, params);
-      throw new Error(`Failed to get project timeline: ${(error as Error).message}`);
-    }
+    // Redirect to enhanced Gantt chart functionality
+    return this.generateGanttChart({
+      ...params,
+      includeCriticalPath: true,
+      includeResources: false,
+      hierarchicalView: false
+    });
   }
 
   /**
@@ -3764,6 +3709,67 @@ export class YouTrackClient {
     } catch (error) {
       logError(error as Error, { method: 'getAllProjectFieldsSummary' });
       throw new Error(`Failed to get project fields summary: ${getErrorMessage(error)}`);
+    }
+  }
+
+  /**
+   * Route issue dependencies with dependency analysis
+   */
+  async routeIssueDependencies(params: {
+    projectId: string;
+    sourceIssueId: string;
+    targetIssueId: string;
+    dependencyType: 'FS' | 'SS' | 'FF' | 'SF';
+    lag?: number;
+    constraint?: 'hard' | 'soft';
+  }): Promise<MCPResponse> {
+    try {
+      const result = await this.ganttChartManager.routeIssueDependencies(params);
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(result, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, { method: 'routeIssueDependencies', params });
+      throw new Error(`Failed to route issue dependencies: ${getErrorMessage(error)}`);
+    }
+  }
+
+  /**
+   * Analyze dependency network for a project
+   */
+  async analyzeDependencyNetwork(projectId: string): Promise<MCPResponse> {
+    try {
+      const result = await this.ganttChartManager.analyzeDependencyNetwork(projectId);
+
+      return result;
+    } catch (error) {
+      logError(error as Error, { method: 'analyzeDependencyNetwork', projectId });
+      throw new Error(`Failed to analyze dependency network: ${getErrorMessage(error)}`);
+    }
+  }
+
+  /**
+   * Calculate critical path for project completion
+   */
+  async calculateCriticalPath(params: {
+    projectId: string;
+    targetIssueId?: string;
+  }): Promise<MCPResponse> {
+    try {
+      const result = await this.ganttChartManager.getCriticalPathAnalysis({
+        projectId: params.projectId,
+        targetMilestone: params.targetIssueId,
+        includeSlack: true
+      });
+
+      return result;
+    } catch (error) {
+      logError(error as Error, { method: 'calculateCriticalPath', params });
+      throw new Error(`Failed to calculate critical path: ${getErrorMessage(error)}`);
     }
   }
 }
