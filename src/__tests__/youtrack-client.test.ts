@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-import { YouTrackClient, MCPResponse } from '../youtrack-client.js';
+import { YouTrackClient } from '../youtrack-client.js';
 
 // Mock the logger to prevent console output during tests
 jest.mock('../logger.js', () => ({

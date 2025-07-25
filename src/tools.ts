@@ -63,7 +63,7 @@ export const toolDefinitions = [
       properties: {
         projectId: {
           type: 'string',
-          description: 'The YouTrack project ID',
+          description: 'The YouTrack project ID (optional if PROJECT_ID is set in environment)',
         },
         summary: {
           type: 'string',
@@ -82,7 +82,7 @@ export const toolDefinitions = [
           description: 'Issue priority (Critical, High, Normal, Low) - use this field, not the title',
         },
       },
-      required: ['projectId', 'summary'],
+      required: ['summary'],
     },
   },
   {
@@ -258,7 +258,7 @@ export const toolDefinitions = [
       properties: {
         projectId: {
           type: 'string',
-          description: 'The YouTrack project ID',
+          description: 'The YouTrack project ID (optional if PROJECT_ID is set in environment)',
         },
         name: {
           type: 'string',
@@ -278,7 +278,7 @@ export const toolDefinitions = [
           description: 'Success criteria for the milestone',
         },
       },
-      required: ['projectId', 'name', 'targetDate'],
+      required: ['name', 'targetDate'],
     },
   },
   {
@@ -642,7 +642,7 @@ export const toolDefinitions = [
         },
         projectId: {
           type: 'string',
-          description: 'Project to associate the article with (optional)',
+          description: 'Project to associate the article with (optional if PROJECT_ID is set in environment)',
         },
         tags: {
           type: 'array',
@@ -1067,7 +1067,7 @@ export const toolDefinitions = [
       properties: {
         projectId: {
           type: 'string',
-          description: 'The YouTrack project ID',
+          description: 'The YouTrack project ID (optional if PROJECT_ID is set in environment)',
         },
         summary: {
           type: 'string',
@@ -1090,7 +1090,7 @@ export const toolDefinitions = [
           description: 'Due date in YYYY-MM-DD format',
         },
       },
-      required: ['projectId', 'summary'],
+      required: ['summary'],
     },
   },
   {

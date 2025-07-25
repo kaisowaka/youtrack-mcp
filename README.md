@@ -45,7 +45,7 @@ npm start
 |----------|----------|-------------|---------|
 | `YOUTRACK_URL` | ✅ | YouTrack instance URL | - |
 | `YOUTRACK_TOKEN` | ✅ | Permanent token | - |
-| `PROJECT_ID` | ❌ | Default project ID | - |
+| `PROJECT_ID` | ❌ | Default project ID (makes projectId optional for creation tools) | - |
 | `ENABLE_WEBHOOKS` | ❌ | Enable webhook server | `false` |
 | `WEBHOOK_PORT` | ❌ | Webhook server port | `3000` |
 | `WEBHOOK_SECRET` | ❌ | Webhook signature secret | - |
@@ -100,6 +100,17 @@ query_issues({ query: "project: PROJ-1 type: Bug state: Open" })
 ```
 create_issue({
   projectId: "PROJ-1",
+  summary: "Add dark mode support",
+  description: "Users want a dark theme option",
+  type: "Feature",
+  priority: "Normal"
+})
+```
+
+### Create issue with default project (when PROJECT_ID is set)
+```
+# Set PROJECT_ID=PROJ-1 in environment
+create_issue({
   summary: "Add dark mode support",
   description: "Users want a dark theme option",
   type: "Feature",

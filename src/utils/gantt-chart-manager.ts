@@ -263,8 +263,8 @@ export class GanttChartManager {
     try {
       logApiCall('POST', '/dependencies/route', params);
       
-      // Validate issues exist
-      const [sourceIssue, targetIssue] = await Promise.all([
+      // Validate issues exist (but don't store the results as they're not used)
+      await Promise.all([
         this.client.getIssue(params.sourceIssueId),
         this.client.getIssue(params.targetIssueId)
       ]);
@@ -291,7 +291,7 @@ export class GanttChartManager {
       }
       
       // Create the dependency link
-      const linkResult = await this.client.createIssueDependency({
+      await this.client.createIssueDependency({
         sourceIssueId: params.sourceIssueId,
         targetIssueId: params.targetIssueId,
         linkType: this.mapDependencyTypeToLink(params.dependencyType)
@@ -718,7 +718,7 @@ export class GanttChartManager {
     };
   }
 
-  private isDownstreamOf(issueId: string, sourceId: string, items: any[]): boolean {
+  private isDownstreamOf(_issueId: string, _sourceId: string, _items: any[]): boolean {
     // Simple downstream detection - could be enhanced with proper graph traversal
     return Math.random() < 0.3; // Placeholder logic
   }
@@ -1174,17 +1174,17 @@ export class GanttChartManager {
     return items;
   }
 
-  private filterGanttItems(items: GanttChartItem[], params: any): GanttChartItem[] {
+  private filterGanttItems(items: GanttChartItem[], _params: any): GanttChartItem[] {
     // Implementation for filtering items by date range and status
     return items;
   }
 
-  private generateGanttStatistics(items: GanttChartItem[], criticalPath: CriticalPathAnalysis | null, resources: GanttResource[] | null): any {
+  private generateGanttStatistics(_items: GanttChartItem[], _criticalPath: CriticalPathAnalysis | null, _resources: GanttResource[] | null): any {
     // Implementation for comprehensive statistics generation
     return {};
   }
 
-  private generateGanttRecommendations(items: GanttChartItem[], criticalPath: CriticalPathAnalysis | null, resources: GanttResource[] | null): string[] {
+  private generateGanttRecommendations(_items: GanttChartItem[], _criticalPath: CriticalPathAnalysis | null, _resources: GanttResource[] | null): string[] {
     // Implementation for intelligent recommendations based on analysis
     return [];
   }
@@ -1199,37 +1199,37 @@ export class GanttChartManager {
     return descriptions[type];
   }
 
-  private identifyResourceConflicts(resources: GanttResource[]): any[] {
+  private identifyResourceConflicts(_resources: GanttResource[]): any[] {
     // Implementation for resource conflict detection
     return [];
   }
 
-  private suggestResourceOptimizations(conflicts: any[], resources: GanttResource[]): any[] {
+  private suggestResourceOptimizations(_conflicts: any[], _resources: GanttResource[]): any[] {
     // Implementation for resource optimization suggestions
     return [];
   }
 
-  private generateResourceRecommendations(conflicts: any[]): string[] {
+  private generateResourceRecommendations(_conflicts: any[]): string[] {
     // Implementation for resource-specific recommendations
     return [];
   }
 
-  private assessCriticalPathRisks(criticalPath: CriticalPathAnalysis, issues: any[]): any {
+  private assessCriticalPathRisks(_criticalPath: CriticalPathAnalysis, _issues: any[]): any {
     // Implementation for risk assessment on critical path
     return {};
   }
 
-  private identifyOptimizationOpportunities(criticalPath: CriticalPathAnalysis, issues: any[]): any[] {
+  private identifyOptimizationOpportunities(_criticalPath: CriticalPathAnalysis, _issues: any[]): any[] {
     // Implementation for optimization opportunity identification
     return [];
   }
 
-  private async generateWhatIfScenarios(criticalPath: CriticalPathAnalysis, issues: any[]): Promise<any[]> {
+  private async generateWhatIfScenarios(_criticalPath: CriticalPathAnalysis, _issues: any[]): Promise<any[]> {
     // Implementation for what-if scenario analysis
     return [];
   }
 
-  private calculateSlackTimes(issues: any[], dependencyGraph: any, criticalPath: CriticalPathAnalysis): any {
+  private calculateSlackTimes(_issues: any[], _dependencyGraph: any, _criticalPath: CriticalPathAnalysis): any {
     // Implementation for slack time calculation
     return {};
   }
@@ -1348,7 +1348,7 @@ export class GanttChartManager {
     }
   }
 
-  private identifyProjectRisks(criticalPath: CriticalPathAnalysis, slackTimes: any): any[] {
+  private identifyProjectRisks(criticalPath: CriticalPathAnalysis, _slackTimes: any): any[] {
     const risks: any[] = [];
     
     if (criticalPath.path.length > 10) {

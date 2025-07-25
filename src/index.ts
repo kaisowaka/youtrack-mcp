@@ -58,6 +58,18 @@ class YouTrackMCPServer {
     this.setupWebhooks();
   }
 
+  // Helper method to resolve project ID with defaults
+  private resolveProjectId(providedProjectId?: string): string {
+    const config = this.config.get();
+    const projectId = providedProjectId || config.defaultProjectId;
+    
+    if (!projectId) {
+      throw new Error('Project ID is required. Either provide projectId parameter or set PROJECT_ID environment variable.');
+    }
+    
+    return projectId;
+  }
+
   private setupToolHandlers(): void {
     this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: toolDefinitions,
@@ -132,7 +144,7 @@ class YouTrackMCPServer {
 
           case 'create_issue':
             result = await this.youtrackClient.createIssue({
-              projectId: args.projectId as string,
+              projectId: this.resolveProjectId(args.projectId as string),
               summary: args.summary as string,
               description: args.description as string,
               type: args.type as string,
@@ -186,7 +198,7 @@ class YouTrackMCPServer {
           // Milestone Management Tools
           case 'create_milestone':
             result = await this.youtrackClient.createMilestone({
-              projectId: args.projectId as string,
+              projectId: this.resolveProjectId(args.projectId as string),
               name: args.name as string,
               targetDate: args.targetDate as string,
               description: args.description as string,
@@ -328,7 +340,7 @@ class YouTrackMCPServer {
               title: args.title as string,
               summary: args.summary as string,
               content: args.content as string,
-              projectId: args.projectId as string,
+              projectId: this.resolveProjectId(args.projectId as string),
               tags: args.tags as string[],
             });
             break;
@@ -529,7 +541,7 @@ class YouTrackMCPServer {
 
           case 'create_epic':
             result = await this.youtrackClient.createEpic({
-              projectId: args.projectId as string,
+              projectId: this.resolveProjectId(args.projectId as string),
               summary: args.summary as string,
               description: args.description as string,
               priority: args.priority as string,
@@ -692,38 +704,7 @@ class YouTrackMCPServer {
   }
 
   public async stop(): Promise<void> {
-    if (this.webhookHandler) {
-      this.webhookHandler.stop();
-    }
+    await this.server.close();
     logger.info('YouTrack MCP Server stopped');
   }
-}
-
-// Handle graceful shutdown
-async function main() {
-  const server = new YouTrackMCPServer();
-  
-  // Handle shutdown signals
-  const shutdown = async (signal: string) => {
-    logger.info(`Received ${signal}, shutting down gracefully`);
-    await server.stop();
-    process.exit(0);
-  };
-
-  process.on('SIGINT', () => shutdown('SIGINT'));
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-
-  try {
-    await server.run();
-  } catch (error) {
-    logger.error('Failed to start server', { error });
-    process.exit(1);
-  }
-}
-
-if (import.meta.url === `file://${process.argv[1]}`) {
-  main().catch((error) => {
-    logger.error('Unhandled error in main', { error });
-    process.exit(1);
-  });
 }
