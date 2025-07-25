@@ -82,7 +82,7 @@ class YouTrackMCPServer {
         let result: MCPResponse;
         
         switch (name) {
-          case 'list_projects':
+          case 'list_projects': {
             logger.info('Executing list_projects with consolidated client');
             
             // Diagnostic info
@@ -109,8 +109,9 @@ class YouTrackMCPServer {
               throw error;
             }
             break;
+          }
 
-          case 'validate_project':
+          case 'validate_project': {
             logger.info('Executing validate_project with consolidated client', { projectId: args.projectId });
             const validation = await this.youtrackClient.validateProject(args.projectId as string);
             logger.info('Successfully validated project', { result: validation });
@@ -121,8 +122,9 @@ class YouTrackMCPServer {
               }]
             };
             break;
+          }
 
-          case 'get_project_status':
+          case 'get_project_status': {
             const stats = await this.youtrackClient.getProjectStats(args.projectId as string);
             result = {
               content: [{
@@ -131,8 +133,9 @@ class YouTrackMCPServer {
               }]
             };
             break;
+          }
 
-          case 'get_project_custom_fields':
+          case 'get_project_custom_fields': {
             const customFields = await this.youtrackClient.getProjectCustomFields(args.projectId as string);
             result = {
               content: [{
@@ -141,6 +144,7 @@ class YouTrackMCPServer {
               }]
             };
             break;
+          }
 
           case 'create_issue':
             result = await this.youtrackClient.createIssue({
@@ -247,7 +251,7 @@ class YouTrackMCPServer {
             });
             break;
 
-          case 'get_project_statistics':
+          case 'get_project_statistics': {
             const period = (args.startDate && args.endDate) ? {
               startDate: args.startDate as string,
               endDate: args.endDate as string
@@ -259,6 +263,7 @@ class YouTrackMCPServer {
               includeTimeTracking: args.includeTimeTracking as boolean,
             });
             break;
+          }
 
           // ========================
           // PHASE 2: AGILE BOARDS
@@ -414,7 +419,7 @@ class YouTrackMCPServer {
             });
             break;
 
-          case 'create_article_group':
+          case 'create_article_group': {
             const articles = args.articles as Array<{
               title: string;
               content: string;
@@ -464,7 +469,7 @@ class YouTrackMCPServer {
                 
                 if (child && parent) {
                   try {
-                    const linkResult = await this.youtrackClient.linkSubArticle({
+                    await this.youtrackClient.linkSubArticle({
                       parentArticleId: parent.id,
                       childArticleId: child.id
                     });
@@ -496,6 +501,7 @@ class YouTrackMCPServer {
               }]
             };
             break;
+          }
 
           // ===========================
           // PHASE 4: GANTT CHARTS & DEPENDENCIES
@@ -737,8 +743,8 @@ async function main() {
   }
 }
 
-// Always run the main function when this file is executed
+// Start the server
 main().catch((error) => {
-  console.error('Fatal error during startup:', error);
+  logger.error('Fatal error during startup:', error);
   process.exit(1);
 });
