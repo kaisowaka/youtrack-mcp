@@ -383,31 +383,6 @@ class YouTrackMCPServer {
             });
             break;
 
-          case 'create_documentation_hierarchy':
-            result = await this.youtrackClient.createDocumentationHierarchy({
-              projectId: args.projectId as string,
-              rootTitle: args.rootTitle as string,
-              rootContent: args.rootContent as string,
-              sections: args.sections as Array<{
-                name: string;
-                description: string;
-                articles: Array<{
-                  title: string;
-                  content: string;
-                  tags?: string[];
-                }>;
-              }>
-            });
-            break;
-
-          case 'get_article_hierarchy':
-            result = await this.youtrackClient.getArticleHierarchy({
-              projectId: args.projectId as string,
-              articleId: args.articleId as string,
-              maxDepth: args.maxDepth as number
-            });
-            break;
-
           // ===========================
           // PHASE 4: GANTT CHARTS & DEPENDENCIES
           // ===========================

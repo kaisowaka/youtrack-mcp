@@ -225,25 +225,6 @@ export const toolDefinitions = [
     },
   },
   {
-    name: 'get_project_timeline',
-    description: 'Get recent activity timeline for a project',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        projectId: {
-          type: 'string',
-          description: 'The YouTrack project ID',
-        },
-        days: {
-          type: 'integer',
-          description: 'Number of days to look back',
-          default: 7,
-        },
-      },
-      required: ['projectId'],
-    },
-  },
-  {
     name: 'bulk_update_issues',
     description: 'Update multiple issues at once',
     inputSchema: {
@@ -815,128 +796,10 @@ export const toolDefinitions = [
       required: ['parentArticleId'],
     },
   },
-  {
-    name: 'create_documentation_hierarchy',
-    description: 'Create a complete hierarchical documentation structure with folders and sub-articles',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        projectId: {
-          type: 'string',
-          description: 'The project to create documentation in',
-        },
-        rootTitle: {
-          type: 'string',
-          description: 'Title for the root documentation article',
-        },
-        rootContent: {
-          type: 'string',
-          description: 'Content for the root documentation article',
-        },
-        sections: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              name: {
-                type: 'string',
-                description: 'Section name',
-              },
-              description: {
-                type: 'string',
-                description: 'Section description',
-              },
-              articles: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    title: { type: 'string' },
-                    content: { type: 'string' },
-                    tags: { 
-                      type: 'array',
-                      items: { type: 'string' }
-                    },
-                  },
-                  required: ['title', 'content'],
-                },
-              },
-            },
-            required: ['name', 'description', 'articles'],
-          },
-          description: 'Documentation sections with articles',
-        },
-      },
-      required: ['projectId', 'rootTitle', 'rootContent', 'sections'],
-    },
-  },
-  {
-    name: 'get_article_hierarchy',
-    description: 'Get the complete hierarchical structure of articles including parent-child relationships',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        projectId: {
-          type: 'string',
-          description: 'Filter by project ID (optional)',
-        },
-        articleId: {
-          type: 'string',
-          description: 'Get hierarchy starting from specific article (optional)',
-        },
-        maxDepth: {
-          type: 'number',
-          description: 'Maximum depth to traverse (optional, default: 10)',
-        },
-      },
-    },
-  },
 
   // =====================================================
   // PHASE 4: GANTT CHARTS & ADVANCED PROJECT MANAGEMENT
   // =====================================================
-  {
-    name: 'generate_gantt_chart',
-    description: 'Generate comprehensive Gantt chart with dependencies, critical path analysis, and resource allocation',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        projectId: {
-          type: 'string',
-          description: 'The YouTrack project ID',
-        },
-        startDate: {
-          type: 'string',
-          description: 'Start date for chart (YYYY-MM-DD format, optional)',
-        },
-        endDate: {
-          type: 'string',
-          description: 'End date for chart (YYYY-MM-DD format, optional)',
-        },
-        includeCompleted: {
-          type: 'boolean',
-          description: 'Include completed issues in chart',
-          default: false,
-        },
-        includeCriticalPath: {
-          type: 'boolean',
-          description: 'Include critical path analysis',
-          default: true,
-        },
-        includeResources: {
-          type: 'boolean',
-          description: 'Include resource allocation analysis',
-          default: false,
-        },
-        hierarchicalView: {
-          type: 'boolean',
-          description: 'Show hierarchical task structure',
-          default: false,
-        },
-      },
-      required: ['projectId'],
-    },
-  },
   {
     name: 'create_gantt_dependency',
     description: 'Create issue dependency with specific relationship type (Finish-to-Start, Start-to-Start, etc.)',
@@ -1011,7 +874,7 @@ export const toolDefinitions = [
   },
   {
     name: 'get_project_timeline',
-    description: 'Get project timeline/Gantt chart data with issue dependencies and scheduling (legacy - use generate_gantt_chart for full features)',
+    description: 'Get project timeline/Gantt chart data with issue dependencies and scheduling',
     inputSchema: {
       type: 'object',
       properties: {
