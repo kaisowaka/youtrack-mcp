@@ -44,12 +44,40 @@ export interface CustomField {
   sample?: string;
 }
 
+export interface ProjectCustomField {
+  field: {
+    id: string;
+    name: string;
+    fieldType: {
+      valueType: string;
+    };
+  };
+  hasOtherValues?: boolean;
+  canBeEmpty?: boolean;
+  bundle?: {
+    id: string;
+    values?: Array<{
+      id: string;
+      name: string;
+    }>;
+  };
+}
+
 export interface CreateIssueParams {
   projectId: string;
   summary: string;
   description?: string;
   type?: string;
   priority?: string;
+}
+
+export interface CreateEpicParams {
+  projectId: string;
+  summary: string;
+  description?: string;
+  priority?: string;
+  assignee?: string;
+  dueDate?: string;
 }
 
 export interface UpdateIssueParams {
@@ -297,6 +325,7 @@ export class YouTrackClient {
       // Resolve project shortName to ID
       const projectId = await this.resolveProjectId(params.projectId);
 
+      // Create issue with basic fields first
       const issueData: any = {
         project: { id: projectId },
         summary: params.summary,
@@ -306,19 +335,40 @@ export class YouTrackClient {
         issueData.description = params.description.trim();
       }
 
-      // Add type if specified (Epic is just another issue type)
-      if (params.type?.trim()) {
-        issueData.type = { name: params.type.trim() };
-      }
-
-      // Add priority if specified
-      if (params.priority?.trim()) {
-        issueData.priority = { name: params.priority.trim() };
-      }
-
+      // Create the issue first without custom fields
       const response = await this.api.post('/issues', issueData, {
         params: {
-          fields: 'id,summary,description,project(id,name),type(name),priority(name)',
+          fields: 'id,summary,description,project(id,name,shortName)',
+        },
+      });
+
+      const issueId = response.data.id;
+
+      // Now update the issue with custom fields if needed
+      if (params.type || params.priority) {
+        const updates: any = {};
+        
+        if (params.type?.trim()) {
+          updates.type = params.type.trim();
+        }
+        
+        if (params.priority?.trim()) {
+          updates.priority = params.priority.trim();
+        }
+
+        // Update the issue with the custom fields
+        try {
+          await this.updateIssue(issueId, updates);
+        } catch (updateError) {
+          // Log the update error but don't fail the creation
+          logError(updateError as Error, { issueId, updates });
+        }
+      }
+
+      // Get the final issue data
+      const finalResponse = await this.api.get(`/issues/${issueId}`, {
+        params: {
+          fields: 'id,summary,description,project(id,name,shortName),customFields(name,value($type,id,name))',
         },
       });
 
@@ -330,14 +380,71 @@ export class YouTrackClient {
           type: 'text',
           text: JSON.stringify({
             success: true,
-            issue: response.data,
-            message: `Issue created successfully: ${response.data.id}`
+            issue: finalResponse.data,
+            message: `Issue created successfully: ${issueId}`
           }, null, 2)
         }],
       };
     } catch (error) {
       logError(error as Error, params);
       throw new Error(`Failed to create issue: ${getErrorMessage(error)}`);
+    }
+  }
+
+  async createEpic(params: CreateEpicParams): Promise<MCPResponse> {
+    try {
+      logApiCall('POST', '/issues', params);
+
+      // Resolve project shortName to ID
+      const projectId = await this.resolveProjectId(params.projectId);
+
+      const issueData: any = {
+        project: { id: projectId },
+        summary: params.summary,
+        type: { name: 'Epic' }, // Explicitly set type to Epic
+      };
+
+      if (params.description?.trim()) {
+        issueData.description = params.description.trim();
+      }
+
+      // Add priority if specified
+      if (params.priority?.trim()) {
+        issueData.priority = { name: params.priority.trim() };
+      }
+
+      // Add assignee if specified
+      if (params.assignee?.trim()) {
+        issueData.assignee = { login: params.assignee.trim() };
+      }
+
+      // Add due date if specified
+      if (params.dueDate?.trim()) {
+        issueData.dueDate = params.dueDate.trim();
+      }
+
+      const response = await this.api.post('/issues', issueData, {
+        params: {
+          fields: 'id,summary,description,project(id,name),type(name),priority(name),assignee(login,name),dueDate',
+        },
+      });
+
+      // Clear project-related cache
+      this.cache.clearPattern(`project-.*-${params.projectId}`);
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            epic: response.data,
+            message: `Epic created successfully: ${response.data.id}`
+          }, null, 2)
+        }],
+      };
+    } catch (error) {
+      logError(error as Error, params);
+      throw new Error(`Failed to create epic: ${getErrorMessage(error)}`);
     }
   }
 
@@ -411,11 +518,16 @@ export class YouTrackClient {
         updateData.tags = updates.tags.map(tag => ({ name: tag }));
       }
 
+      // Log the actual formatted data being sent
+      console.log('🔍 Actual updateData being sent:', JSON.stringify(updateData, null, 2));
+
       const response = await this.api.post(`/issues/${issueId}`, updateData, {
         params: {
           fields: 'id,summary,description,state(name),priority(name),assignee(login,fullName),type(name)',
         },
       });
+
+      console.log('🔍 Raw YouTrack API response:', JSON.stringify(response.data, null, 2));
 
       // Clear related cache
       this.cache.clearPattern(`query-.*`);
@@ -432,6 +544,12 @@ export class YouTrackClient {
         }],
       };
     } catch (error) {
+      console.error('🚨 Update issue error:', error);
+      if (error && typeof error === 'object' && 'response' in error) {
+        const axiosError = error as any;
+        console.error('🚨 Response data:', JSON.stringify(axiosError.response?.data, null, 2));
+        console.error('🚨 Response status:', axiosError.response?.status);
+      }
       logError(error as Error, { issueId, updates });
       throw new Error(`Failed to update issue: ${getErrorMessage(error)}`);
     }
@@ -672,14 +790,34 @@ export class YouTrackClient {
   /**
    * Get project custom fields by analyzing existing issues
    */
-  async getProjectCustomFields(projectId: string): Promise<CustomField[]> {
+  async getProjectCustomFields(projectId: string): Promise<ProjectCustomField[]> {
     try {
       const cacheKey = `project-custom-fields-${projectId}`;
-      const cached = this.cache.get<CustomField[]>(cacheKey);
+      const cached = this.cache.get<ProjectCustomField[]>(cacheKey);
       if (cached) {
         return cached;
       }
 
+      logApiCall('GET', `/admin/projects/${projectId}/customFields`);
+      const response = await this.api.get(`/admin/projects/${projectId}/customFields`, {
+        params: {
+          fields: 'field(id,name,fieldType(valueType)),bundle(id,values(id,name))',
+        }
+      });
+
+      const customFields: ProjectCustomField[] = response.data || [];
+      this.cache.set(cacheKey, customFields, 300000); // Cache for 5 minutes
+
+      return customFields;
+    } catch (error) {
+      // Fallback to legacy method if admin API fails
+      logger.warn('Admin API failed, falling back to legacy method', { error: getErrorMessage(error) });
+      return this.getProjectCustomFieldsLegacy(projectId);
+    }
+  }
+
+  private async getProjectCustomFieldsLegacy(projectId: string): Promise<ProjectCustomField[]> {
+    try {
       logApiCall('GET', '/issues', { project: projectId, customFields: true });
       const response = await this.api.get('/issues', {
         params: {
@@ -689,7 +827,7 @@ export class YouTrackClient {
         }
       });
 
-      const customFieldsMap = new Map<string, CustomField>();
+      const customFieldsMap = new Map<string, ProjectCustomField>();
       
       if (response.data && Array.isArray(response.data)) {
         response.data.forEach((issue: any) => {
@@ -697,26 +835,17 @@ export class YouTrackClient {
             issue.customFields.forEach((field: any) => {
               const fieldName = field.name || field.field?.name;
               if (fieldName && !customFieldsMap.has(fieldName)) {
-                const customField: CustomField = {
-                  name: fieldName,
-                  type: field.field?.$type || field.value?.$type || 'Unknown',
-                  values: [],
-                  sample: field.value?.name || field.value?.login || field.value?.fullName || JSON.stringify(field.value)
+                const customField: ProjectCustomField = {
+                  field: {
+                    id: field.field?.id || fieldName,
+                    name: fieldName,
+                    fieldType: {
+                      valueType: field.field?.$type || field.value?.$type || 'Unknown'
+                    }
+                  }
                 };
 
-                // Collect sample values for enum-like fields
-                if (field.value?.name) {
-                  customField.values = [field.value.name];
-                }
-
                 customFieldsMap.set(fieldName, customField);
-              } else if (fieldName && customFieldsMap.has(fieldName)) {
-                // Add to values if it's a new value
-                const existingField = customFieldsMap.get(fieldName)!;
-                if (field.value?.name && !existingField.values?.includes(field.value.name)) {
-                  existingField.values = existingField.values || [];
-                  existingField.values.push(field.value.name);
-                }
               }
             });
           }
@@ -724,7 +853,6 @@ export class YouTrackClient {
       }
 
       const customFields = Array.from(customFieldsMap.values());
-      this.cache.set(cacheKey, customFields, 300000); // Cache for 5 minutes
       return customFields;
     } catch (error) {
       logError(error as Error, { projectId });
@@ -1805,7 +1933,7 @@ export class YouTrackClient {
     includeContent?: boolean;
   }): Promise<MCPResponse> {
     try {
-      let fieldsParam = 'id,title,summary,author(login,fullName),created,updated,project(name,shortName),tags(name),ordinal';
+      let fieldsParam = 'id,title,summary,author(login,fullName),created,updated,project(name,shortName),tags(name),ordinal,parentArticle(id,idReadable,summary),childArticles(id,idReadable,summary),hasChildren';
       if (params.includeContent) {
         fieldsParam += ',content';
       }
@@ -1869,7 +1997,7 @@ export class YouTrackClient {
     includeComments?: boolean;
   }): Promise<MCPResponse> {
     try {
-      let fieldsParam = 'id,title,summary,content,author(login,fullName),created,updated,project(name,shortName),visibility,attachments(name,url,size),tags(name),ordinal';
+      let fieldsParam = 'id,title,summary,content,author(login,fullName),created,updated,project(name,shortName),visibility,attachments(name,url,size),tags(name),ordinal,parentArticle(id,idReadable,summary),childArticles(id,idReadable,summary),hasChildren';
       
       if (params.includeComments) {
         fieldsParam += ',comments(text,author(login,fullName),created,updated)';
@@ -2273,6 +2401,89 @@ export class YouTrackClient {
     } catch (error) {
       logError(error as Error, params);
       throw new Error(`Failed to get knowledge base statistics: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Link an article as a sub-article to a parent article
+   */
+  async linkSubArticle(params: {
+    parentArticleId: string;
+    childArticleId: string;
+  }): Promise<MCPResponse> {
+    try {
+      const linkData = {
+        id: params.childArticleId,
+        $type: 'Article'
+      };
+
+      logApiCall('POST', `/articles/${params.parentArticleId}/childArticles`, linkData);
+      const response = await this.api.post(`/articles/${params.parentArticleId}/childArticles`, linkData, {
+        params: { fields: 'id,idReadable,summary' }
+      });
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            parentArticleId: params.parentArticleId,
+            childArticleId: params.childArticleId,
+            linkedArticle: response.data,
+            message: `Article ${params.childArticleId} linked as sub-article of ${params.parentArticleId}`
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, params);
+      throw new Error(`Failed to link sub-article: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Get sub-articles of a parent article
+   */
+  async getSubArticles(params: {
+    parentArticleId: string;
+    includeContent?: boolean;
+  }): Promise<MCPResponse> {
+    try {
+      let fieldsParam = 'id,idReadable,summary,author(login,fullName),created,updated,tags(name),ordinal';
+      if (params.includeContent) {
+        fieldsParam += ',content';
+      }
+
+      logApiCall('GET', `/articles/${params.parentArticleId}/childArticles`, { fields: fieldsParam });
+      const response = await this.api.get(`/articles/${params.parentArticleId}/childArticles`, {
+        params: { fields: fieldsParam }
+      });
+
+      const subArticles = response.data || [];
+      
+      // Process sub-articles for better presentation
+      const processedSubArticles = subArticles.map((article: any) => ({
+        ...article,
+        createdDate: article.created ? new Date(article.created).toISOString().split('T')[0] : null,
+        updatedDate: article.updated ? new Date(article.updated).toISOString().split('T')[0] : null,
+        contentLength: article.content?.length || 0,
+        tagNames: article.tags?.map((tag: any) => tag.name) || [],
+        authorName: article.author?.fullName || article.author?.login || 'Unknown'
+      }));
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            parentArticleId: params.parentArticleId,
+            subArticles: processedSubArticles,
+            count: processedSubArticles.length
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, params);
+      throw new Error(`Failed to get sub-articles: ${(error as Error).message}`);
     }
   }
 

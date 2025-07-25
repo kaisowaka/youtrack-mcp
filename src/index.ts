@@ -369,6 +369,28 @@ class YouTrackMCPServer {
             });
             break;
 
+          case 'link_sub_article':
+            result = await this.youtrackClient.linkSubArticle({
+              parentArticleId: args.parentArticleId as string,
+              childArticleId: args.childArticleId as string,
+            });
+            break;
+
+          case 'get_sub_articles':
+            result = await this.youtrackClient.getSubArticles({
+              parentArticleId: args.parentArticleId as string,
+              includeContent: args.includeContent as boolean,
+            });
+            break;
+
+          case 'create_documentation_hierarchy':
+            // This is a complex operation that would need custom implementation
+            throw new Error('create_documentation_hierarchy is not yet implemented - use the hierarchical-knowledge-base script instead');
+
+          case 'get_article_hierarchy':
+            // This would need custom implementation to build the full hierarchy
+            throw new Error('get_article_hierarchy is not yet implemented - use the hierarchical-knowledge-base script instead');
+
           // ===========================
           // PHASE 4: GANTT CHARTS & DEPENDENCIES
           // ===========================
@@ -408,6 +430,17 @@ class YouTrackMCPServer {
               projectId: args.projectId as string,
               startDate: args.startDate as string,
               endDate: args.endDate as string,
+            });
+            break;
+
+          case 'create_epic':
+            result = await this.youtrackClient.createEpic({
+              projectId: args.projectId as string,
+              summary: args.summary as string,
+              description: args.description as string,
+              priority: args.priority as string,
+              assignee: args.assignee as string,
+              dueDate: args.dueDate as string,
             });
             break;
 

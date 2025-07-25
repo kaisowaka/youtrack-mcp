@@ -57,7 +57,7 @@ export const toolDefinitions = [
   },
   {
     name: 'create_issue',
-    description: 'Create a new issue in a YouTrack project',
+    description: 'Create a new issue in a YouTrack project. Always use separate fields for type, priority, and state - never embed them in the summary/title.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -67,7 +67,7 @@ export const toolDefinitions = [
         },
         summary: {
           type: 'string',
-          description: 'Issue summary/title',
+          description: 'Issue summary/title (do not include type, priority, or state prefixes here)',
         },
         description: {
           type: 'string',
@@ -75,11 +75,11 @@ export const toolDefinitions = [
         },
         type: {
           type: 'string',
-          description: 'Issue type (Bug, Feature, Task, etc.)',
+          description: 'Issue type (Bug, Feature, Task, etc.) - use this field, not the title',
         },
         priority: {
           type: 'string',
-          description: 'Issue priority',
+          description: 'Issue priority (Critical, High, Normal, Low) - use this field, not the title',
         },
       },
       required: ['projectId', 'summary'],
@@ -111,7 +111,7 @@ export const toolDefinitions = [
   },
   {
     name: 'update_issue',
-    description: 'Update an existing issue with enhanced field support (state, priority, type, assignee, subsystem, etc.)',
+    description: 'Update an existing issue with enhanced field support. Always use separate properties for state, priority, type, etc. - never embed them in the summary.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -121,21 +121,21 @@ export const toolDefinitions = [
         },
         updates: {
           type: 'object',
-          description: 'Fields to update with enhanced support',
+          description: 'Fields to update - use separate properties for each field',
           properties: {
-            summary: { type: 'string', description: 'Issue title/summary' },
+            summary: { type: 'string', description: 'Issue title/summary (do not include state, priority, or type prefixes)' },
             description: { type: 'string', description: 'Issue description' },
             state: { 
               type: 'string', 
-              description: 'Issue state (e.g., "Open", "In Progress", "Done", "Resolved")' 
+              description: 'Issue state (e.g., "Open", "In Progress", "Done", "Resolved") - use this field, not the title' 
             },
             priority: { 
               type: 'string', 
-              description: 'Issue priority (e.g., "Critical", "High", "Normal", "Low")' 
+              description: 'Issue priority (e.g., "Critical", "High", "Normal", "Low") - use this field, not the title' 
             },
             type: { 
               type: 'string', 
-              description: 'Issue type (e.g., "Bug", "Feature", "Task", "Epic")' 
+              description: 'Issue type (e.g., "Bug", "Feature", "Task", "Epic") - use this field, not the title' 
             },
             assignee: { 
               type: 'string', 
@@ -779,6 +779,118 @@ export const toolDefinitions = [
       },
     },
   },
+  {
+    name: 'link_sub_article',
+    description: 'Link an existing article as a sub-article to a parent article for hierarchical organization',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        parentArticleId: {
+          type: 'string',
+          description: 'The parent article ID',
+        },
+        childArticleId: {
+          type: 'string',
+          description: 'The child article ID to link as sub-article',
+        },
+      },
+      required: ['parentArticleId', 'childArticleId'],
+    },
+  },
+  {
+    name: 'get_sub_articles',
+    description: 'Get all sub-articles of a parent article for hierarchical navigation',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        parentArticleId: {
+          type: 'string',
+          description: 'The parent article ID',
+        },
+        includeContent: {
+          type: 'boolean',
+          description: 'Include full article content in the response',
+        },
+      },
+      required: ['parentArticleId'],
+    },
+  },
+  {
+    name: 'create_documentation_hierarchy',
+    description: 'Create a complete hierarchical documentation structure with folders and sub-articles',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'The project to create documentation in',
+        },
+        rootTitle: {
+          type: 'string',
+          description: 'Title for the root documentation article',
+        },
+        rootContent: {
+          type: 'string',
+          description: 'Content for the root documentation article',
+        },
+        sections: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name: {
+                type: 'string',
+                description: 'Section name',
+              },
+              description: {
+                type: 'string',
+                description: 'Section description',
+              },
+              articles: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    title: { type: 'string' },
+                    content: { type: 'string' },
+                    tags: { 
+                      type: 'array',
+                      items: { type: 'string' }
+                    },
+                  },
+                  required: ['title', 'content'],
+                },
+              },
+            },
+            required: ['name', 'description', 'articles'],
+          },
+          description: 'Documentation sections with articles',
+        },
+      },
+      required: ['projectId', 'rootTitle', 'rootContent', 'sections'],
+    },
+  },
+  {
+    name: 'get_article_hierarchy',
+    description: 'Get the complete hierarchical structure of articles including parent-child relationships',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'Filter by project ID (optional)',
+        },
+        articleId: {
+          type: 'string',
+          description: 'Get hierarchy starting from specific article (optional)',
+        },
+        maxDepth: {
+          type: 'number',
+          description: 'Maximum depth to traverse (optional, default: 10)',
+        },
+      },
+    },
+  },
 
   // =====================================================
   // PHASE 4: GANTT CHARTS & DEPENDENCIES
@@ -890,6 +1002,40 @@ export const toolDefinitions = [
         },
       },
       required: ['projectId'],
+    },
+  },
+  {
+    name: 'create_epic',
+    description: 'Create a new epic to group related issues and track strategic progress',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'The YouTrack project ID',
+        },
+        summary: {
+          type: 'string',
+          description: 'Epic summary/title',
+        },
+        description: {
+          type: 'string',
+          description: 'Epic description and goals',
+        },
+        priority: {
+          type: 'string',
+          description: 'Epic priority (Critical, High, Normal, Low)',
+        },
+        assignee: {
+          type: 'string',
+          description: 'Epic owner/assignee login',
+        },
+        dueDate: {
+          type: 'string',
+          description: 'Due date in YYYY-MM-DD format',
+        },
+      },
+      required: ['projectId', 'summary'],
     },
   },
 ];
