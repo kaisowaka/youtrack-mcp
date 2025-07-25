@@ -708,3 +708,31 @@ class YouTrackMCPServer {
     logger.info('YouTrack MCP Server stopped');
   }
 }
+
+// Main execution
+async function main() {
+  try {
+    const server = new YouTrackMCPServer();
+    await server.run();
+  } catch (error) {
+    logger.error('Failed to start YouTrack MCP Server', { error });
+    process.exit(1);
+  }
+}
+
+// Handle process signals
+process.on('SIGINT', () => {
+  logger.info('Received SIGINT, shutting down gracefully');
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  logger.info('Received SIGTERM, shutting down gracefully');
+  process.exit(0);
+});
+
+// Start the server
+main().catch((error) => {
+  logger.error('Unhandled error in main', { error });
+  process.exit(1);
+});
