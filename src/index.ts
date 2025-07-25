@@ -444,6 +444,32 @@ class YouTrackMCPServer {
             });
             break;
 
+          case 'discover_project_fields':
+            result = await this.youtrackClient.discoverProjectFields(args.projectId as string);
+            break;
+
+          case 'get_project_field_values':
+            result = await this.youtrackClient.getProjectFieldValues(
+              args.projectId as string,
+              args.fieldName as string
+            );
+            break;
+
+          case 'compare_project_fields':
+            result = await this.youtrackClient.compareProjectFields(
+              args.projectId1 as string,
+              args.projectId2 as string
+            );
+            break;
+
+          case 'get_project_field_schema':
+            result = await this.youtrackClient.getProjectFieldSchema(args.projectId as string);
+            break;
+
+          case 'get_all_project_fields_summary':
+            result = await this.youtrackClient.getAllProjectFieldsSummary();
+            break;
+
           default:
             throw new McpError(
               ErrorCode.MethodNotFound,

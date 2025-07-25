@@ -1038,4 +1038,76 @@ export const toolDefinitions = [
       required: ['projectId', 'summary'],
     },
   },
+  {
+    name: 'discover_project_fields',
+    description: 'Dynamically discover all custom fields for a specific project including field types, constraints, and available values',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'The YouTrack project ID or shortName to discover fields for',
+        },
+      },
+      required: ['projectId'],
+    },
+  },
+  {
+    name: 'get_project_field_values',
+    description: 'Get available values for a specific field in a project (useful for dropdowns and validation)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'The YouTrack project ID or shortName',
+        },
+        fieldName: {
+          type: 'string',
+          description: 'The name of the field to get values for (e.g., "Priority", "State", "Type")',
+        },
+      },
+      required: ['projectId', 'fieldName'],
+    },
+  },
+  {
+    name: 'compare_project_fields',
+    description: 'Compare field configurations between two projects to identify differences and similarities',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId1: {
+          type: 'string',
+          description: 'First project ID or shortName to compare',
+        },
+        projectId2: {
+          type: 'string',
+          description: 'Second project ID or shortName to compare',
+        },
+      },
+      required: ['projectId1', 'projectId2'],
+    },
+  },
+  {
+    name: 'get_project_field_schema',
+    description: 'Get field schema for a project organized by categories (required/optional) - useful for dynamic form generation',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'The YouTrack project ID or shortName to get schema for',
+        },
+      },
+      required: ['projectId'],
+    },
+  },
+  {
+    name: 'get_all_project_fields_summary',
+    description: 'Get summary of all discovered project fields across all projects accessed so far',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
 ];

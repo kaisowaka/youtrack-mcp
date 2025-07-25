@@ -2,6 +2,9 @@ import axios, { AxiosInstance, AxiosError } from 'axios';
 import axiosRetry from 'axios-retry';
 import { logger, logApiCall, logError } from './logger.js';
 import { SimpleCache } from './cache.js';
+import { CustomFieldsManager, CustomFieldValue } from './custom-fields-manager.js';
+import { FieldSelector } from './field-selector.js';
+import { DynamicProjectFieldManager, ProjectFieldsInfo } from './dynamic-field-manager.js';
 
 export interface MCPResponse {
   content: Array<{
@@ -11,16 +14,231 @@ export interface MCPResponse {
 }
 
 export interface Issue {
+  // Core identification
   id: string;
+  idReadable: string;
+  numberInProject: number;
+  
+  // Basic content
   summary: string;
   description?: string;
-  state?: any;
-  priority?: any;
-  reporter?: any;
-  assignee?: any;
-  customFields?: any[];
-  created?: string;
-  updated?: string;
+  wikifiedDescription?: string;
+  
+  // Project and ownership
+  project: {
+    id: string;
+    name: string;
+    shortName: string;
+  };
+  reporter?: User;
+  updater?: User;
+  draftOwner?: User;
+  
+  // Status and workflow
+  isDraft: boolean;
+  resolved?: number; // timestamp
+  
+  // Custom fields and properties
+  customFields: IssueCustomField[];
+  
+  // Temporal information
+  created: number; // timestamp
+  updated: number; // timestamp
+  
+  // Relationships
+  parent?: IssueLink;
+  subtasks?: IssueLink[];
+  links?: IssueLink[];
+  externalIssue?: ExternalIssue;
+  
+  // Social features
+  tags?: Tag[];
+  votes: number;
+  voters?: IssueVoters;
+  watchers?: IssueWatchers;
+  
+  // Comments and communication
+  comments?: IssueComment[];
+  commentsCount: number;
+  pinnedComments?: IssueComment[];
+  
+  // Attachments
+  attachments?: IssueAttachment[];
+  
+  // Visibility and permissions
+  visibility?: Visibility;
+}
+
+export interface User {
+  id?: string;
+  login: string;
+  fullName?: string;
+  email?: string;
+  jabberAccountName?: string;
+  ringId?: string;
+  guest?: boolean;
+  online?: boolean;
+  banned?: boolean;
+  tags?: Tag[];
+  savedQueries?: SavedQuery[];
+  avatarUrl?: string;
+  profiles?: GeneralUserProfile;
+}
+
+export interface IssueCustomField {
+  $type?: string;
+  id?: string;
+  name: string;
+  value?: any;
+  projectCustomField?: ProjectCustomField;
+}
+
+export interface IssueLink {
+  id?: string;
+  direction?: string;
+  linkType?: IssueLinkType;
+  issues?: Issue[];
+  trimmedIssues?: Issue[];
+}
+
+export interface IssueLinkType {
+  id?: string;
+  name?: string;
+  localizedName?: string;
+  sourceToTarget?: string;
+  localizedSourceToTarget?: string;
+  targetToSource?: string;
+  localizedTargetToSource?: string;
+  directed?: boolean;
+  aggregation?: boolean;
+  readOnly?: boolean;
+}
+
+export interface ExternalIssue {
+  id?: string;
+  name?: string;
+  url?: string;
+  key?: string;
+}
+
+export interface Tag {
+  id?: string;
+  name: string;
+  query?: string;
+  color?: FieldStyle;
+  untagOnResolve?: boolean;
+  owner?: User;
+  updateableBy?: UserGroup;
+  visibleFor?: UserGroup;
+}
+
+export interface FieldStyle {
+  id?: string;
+  background?: string;
+  foreground?: string;
+}
+
+export interface UserGroup {
+  id?: string;
+  name?: string;
+  ringId?: string;
+  usersCount?: number;
+  icon?: string;
+}
+
+export interface IssueVoters {
+  id?: string;
+  hasVote?: boolean;
+  original?: Issue;
+  duplicate?: Issue[];
+}
+
+export interface IssueWatchers {
+  id?: string;
+  hasStar?: boolean;
+  issueWatchers?: User[];
+  duplicateWatchers?: User[];
+}
+
+export interface IssueComment {
+  id?: string;
+  text?: string;
+  textPreview?: string;
+  wikifiedText?: string;
+  created?: number;
+  updated?: number;
+  author?: User;
+  issue?: Issue;
+  parent?: IssueComment;
+  replies?: IssueComment[];
+  deleted?: boolean;
+  visibility?: Visibility;
+  attachments?: IssueAttachment[];
+}
+
+export interface IssueAttachment {
+  id?: string;
+  name?: string;
+  url?: string;
+  size?: number;
+  extension?: string;
+  charset?: string;
+  mimeType?: string;
+  metaData?: string;
+  created?: number;
+  updated?: number;
+  author?: User;
+  issue?: Issue;
+  comment?: IssueComment;
+  visibility?: Visibility;
+  removed?: boolean;
+  base64Content?: string;
+  thumbnailURL?: string;
+}
+
+export interface Visibility {
+  $type?: string;
+  permittedGroups?: UserGroup[];
+  permittedUsers?: User[];
+}
+
+export interface SavedQuery {
+  id?: string;
+  name?: string;
+  query?: string;
+  issues?: Issue[];
+  owner?: User;
+}
+
+export interface GeneralUserProfile {
+  id?: string;
+  locale?: Locale;
+  general?: GeneralUserProfile;
+  timeTracking?: TimeTrackingUserProfile;
+  notifications?: NotificationsUserProfile;
+}
+
+export interface Locale {
+  id?: string;
+  language?: string;
+  country?: string;
+  locale?: string;
+}
+
+export interface TimeTrackingUserProfile {
+  id?: string;
+  timeFormat?: string;
+}
+
+export interface NotificationsUserProfile {
+  id?: string;
+  autoWatch?: boolean;
+  jabberNotificationsEnabled?: boolean;
+  emailNotificationsEnabled?: boolean;
+  mentionNotificationsEnabled?: boolean;
+  duplicateClusterNotificationsEnabled?: boolean;
+  mailboxIntegrationNotificationsEnabled?: boolean;
+  usePlainTextEmails?: boolean;
 }
 
 // Enhanced interfaces for consolidated client
@@ -69,6 +287,9 @@ export interface CreateIssueParams {
   description?: string;
   type?: string;
   priority?: string;
+  state?: string;
+  assignee?: string;
+  customFields?: Record<string, any>;
 }
 
 export interface CreateEpicParams {
@@ -104,6 +325,8 @@ function getErrorMessage(error: unknown): string {
 export class YouTrackClient {
   private api: AxiosInstance;
   private cache: SimpleCache;
+  private customFieldsManager: CustomFieldsManager;
+  private dynamicFieldManager: DynamicProjectFieldManager;
 
   constructor(baseUrl: string, token: string) {
     this.cache = new SimpleCache();
@@ -117,6 +340,10 @@ export class YouTrackClient {
       },
       timeout: 30000, // 30 second timeout
     });
+
+    // Initialize field managers
+    this.customFieldsManager = new CustomFieldsManager(this.api, this.cache);
+    this.dynamicFieldManager = new DynamicProjectFieldManager(this.api, this.cache);
 
     // Add retry logic for transient failures
     axiosRetry(this.api, {
@@ -287,34 +514,27 @@ export class YouTrackClient {
    * Resolve project identifier - try different formats for YouTrack API compatibility
    */
   private async resolveProjectId(projectIdentifier: string): Promise<string> {
-    // First, try to find the project by querying issues to get the correct ID format
+    // If it's already in the right format (like "0-1"), return as-is
+    if (/^\d+-\d+$/.test(projectIdentifier)) {
+      return projectIdentifier;
+    }
+
+    // Try to get projects list to find the correct ID
     try {
-      const issues = await this.api.get('/issues', {
-        params: {
-          query: `project: ${projectIdentifier}`,
-          fields: 'project(id,shortName)',
-          limit: 1
-        }
-      });
-      
-      if (issues.data && issues.data.length > 0) {
-        const project = issues.data[0].project;
-        // Return the actual project ID (like "0-1") that works with the API
-        return project.id || project.shortName || projectIdentifier;
+      const projects = await this.listProjects();
+      const project = projects.find(p => 
+        p.shortName === projectIdentifier || 
+        p.id === projectIdentifier ||
+        p.name === projectIdentifier
+      );
+      if (project) {
+        return project.id;
       }
     } catch (error) {
-      // If issue query fails, try to get projects list
-      try {
-        const projects = await this.listProjects();
-        const project = projects.find(p => p.shortName === projectIdentifier || p.id === projectIdentifier);
-        if (project) {
-          return project.id;
-        }
-      } catch (listError) {
-        // Fall back to original identifier
-      }
+      logger.warn(`Failed to resolve project ID for ${projectIdentifier}:`, (error as Error).message);
     }
     
+    // Fall back to original identifier
     return projectIdentifier;
   }
 
@@ -325,69 +545,90 @@ export class YouTrackClient {
       // Resolve project shortName to ID
       const projectId = await this.resolveProjectId(params.projectId);
 
-      // Create issue with basic fields first
+      // Prepare custom fields from both direct parameters and custom fields
+      const fieldMappings: Record<string, any> = {};
+      
+      // Map standard fields to custom fields
+      if (params.type) fieldMappings.type = params.type;
+      if (params.priority) fieldMappings.priority = params.priority;
+      if (params.state) fieldMappings.state = params.state;
+      if (params.assignee) fieldMappings.assignee = params.assignee;
+      
+      // Add any additional custom fields
+      if (params.customFields) {
+        Object.assign(fieldMappings, params.customFields);
+      }
+
+      // Get custom fields for the project first
+      await this.customFieldsManager.getProjectCustomFields(projectId);
+
+      // Convert to proper custom fields format
+      const customFields = this.customFieldsManager.convertToCustomFields(projectId, fieldMappings);
+
+      // Validate custom fields
+      const validation = await this.customFieldsManager.validateCustomFields(projectId, customFields);
+      if (!validation.valid) {
+        throw new Error(`Custom field validation failed: ${validation.errors.join(', ')}`);
+      }
+
+      // Create issue with proper structure
       const issueData: any = {
         project: { id: projectId },
         summary: params.summary,
+        customFields: customFields
       };
 
       if (params.description?.trim()) {
         issueData.description = params.description.trim();
       }
 
-      // Create the issue first without custom fields
+      logger.info('Creating issue with proper custom fields structure', { 
+        projectId, 
+        summary: params.summary,
+        customFieldsCount: customFields.length 
+      });
+
       const response = await this.api.post('/issues', issueData, {
         params: {
-          fields: 'id,summary,description,project(id,name,shortName)',
+          fields: 'id,summary,description,project(id,name,shortName),customFields(name,value(name,id))',
         },
       });
 
-      const issueId = response.data.id;
-
-      // Now update the issue with custom fields if needed
-      if (params.type || params.priority) {
-        const updates: any = {};
-        
-        if (params.type?.trim()) {
-          updates.type = params.type.trim();
-        }
-        
-        if (params.priority?.trim()) {
-          updates.priority = params.priority.trim();
-        }
-
-        // Update the issue with the custom fields
-        try {
-          await this.updateIssue(issueId, updates);
-        } catch (updateError) {
-          // Log the update error but don't fail the creation
-          logError(updateError as Error, { issueId, updates });
-        }
-      }
-
-      // Get the final issue data
-      const finalResponse = await this.api.get(`/issues/${issueId}`, {
-        params: {
-          fields: 'id,summary,description,project(id,name,shortName),customFields(name,value($type,id,name))',
-        },
-      });
-
-      // Clear project-related cache
-      this.cache.clearPattern(`project-.*-${params.projectId}`);
+      // Clear related cache
+      this.cache.clearPattern(`query-.*`);
+      this.cache.clearPattern(`project-.*`);
 
       return {
         content: [{
           type: 'text',
           text: JSON.stringify({
             success: true,
-            issue: finalResponse.data,
-            message: `Issue created successfully: ${issueId}`
-          }, null, 2)
+            issue: response.data,
+            message: `Issue created successfully: ${response.data.id}`
+          }, null, 2),
         }],
       };
     } catch (error) {
-      logError(error as Error, params);
-      throw new Error(`Failed to create issue: ${getErrorMessage(error)}`);
+      logError(error as Error, { 
+        method: 'createIssue', 
+        params,
+        errorDetails: error instanceof AxiosError ? {
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data
+        } : undefined
+      });
+      
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: false,
+            error: getErrorMessage(error),
+            details: error instanceof AxiosError ? error.response?.data : null
+          }, null, 2),
+        }],
+      };
     }
   }
 
@@ -485,49 +726,55 @@ export class YouTrackClient {
     try {
       logApiCall('POST', `/issues/${issueId}`, updates);
 
+      // Get issue to determine project ID for custom field mapping
+      const issueResponse = await this.api.get(`/issues/${issueId}`, {
+        params: { fields: 'id,project(id)' }
+      });
+      const projectId = issueResponse.data.project.id;
+
       const updateData: any = {};
 
+      // Handle basic fields
       if (updates.summary) {
         updateData.summary = updates.summary;
       }
       if (updates.description) {
         updateData.description = updates.description;
       }
-      if (updates.state) {
-        updateData.state = { name: updates.state };
+
+      // Handle custom fields properly
+      const customFieldMappings: Record<string, any> = {};
+      
+      if (updates.state) customFieldMappings.state = updates.state;
+      if (updates.priority) customFieldMappings.priority = updates.priority;
+      if (updates.type) customFieldMappings.type = updates.type;
+      if (updates.assignee) customFieldMappings.assignee = updates.assignee;
+      if (updates.subsystem) customFieldMappings.subsystem = updates.subsystem;
+      if (updates.dueDate) customFieldMappings.dueDate = updates.dueDate;
+      if (updates.estimation) customFieldMappings.estimation = updates.estimation;
+
+      // Convert to proper custom fields format
+      if (Object.keys(customFieldMappings).length > 0) {
+        const customFields = await this.customFieldsManager.convertToCustomFields(projectId, customFieldMappings);
+        updateData.customFields = customFields;
       }
-      if (updates.priority) {
-        updateData.priority = { name: updates.priority };
-      }
-      if (updates.assignee) {
-        updateData.assignee = { login: updates.assignee };
-      }
-      if (updates.type) {
-        updateData.type = { name: updates.type };
-      }
-      if (updates.subsystem) {
-        updateData.subsystem = { name: updates.subsystem };
-      }
-      if (updates.dueDate) {
-        updateData.dueDate = updates.dueDate;
-      }
-      if (updates.estimation) {
-        updateData.estimation = { minutes: updates.estimation };
-      }
+
+      // Handle tags separately (not a custom field)
       if (updates.tags) {
         updateData.tags = updates.tags.map(tag => ({ name: tag }));
       }
 
-      // Log the actual formatted data being sent
-      console.log('🔍 Actual updateData being sent:', JSON.stringify(updateData, null, 2));
+      logger.info('Updating issue with proper custom fields structure', { 
+        issueId, 
+        projectId,
+        customFieldsCount: updateData.customFields?.length || 0 
+      });
 
       const response = await this.api.post(`/issues/${issueId}`, updateData, {
         params: {
-          fields: 'id,summary,description,state(name),priority(name),assignee(login,fullName),type(name)',
+          fields: 'id,summary,description,customFields(name,value(name,id)),tags(name)',
         },
       });
-
-      console.log('🔍 Raw YouTrack API response:', JSON.stringify(response.data, null, 2));
 
       // Clear related cache
       this.cache.clearPattern(`query-.*`);
@@ -544,15 +791,201 @@ export class YouTrackClient {
         }],
       };
     } catch (error) {
-      console.error('🚨 Update issue error:', error);
-      if (error && typeof error === 'object' && 'response' in error) {
-        const axiosError = error as any;
-        console.error('🚨 Response data:', JSON.stringify(axiosError.response?.data, null, 2));
-        console.error('🚨 Response status:', axiosError.response?.status);
-      }
-      logError(error as Error, { issueId, updates });
-      throw new Error(`Failed to update issue: ${getErrorMessage(error)}`);
+      logError(error as Error, { 
+        method: 'updateIssue',
+        issueId, 
+        updates,
+        errorDetails: error instanceof AxiosError ? {
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data
+        } : undefined
+      });
+      
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: false,
+            error: getErrorMessage(error),
+            details: error instanceof AxiosError ? error.response?.data : null
+          }, null, 2),
+        }],
+      };
     }
+  }
+
+  /**
+   * Get a single issue with comprehensive field selection
+   */
+  async getIssue(issueId: string, includeAllFields: boolean = false): Promise<MCPResponse> {
+    try {
+      logApiCall('GET', `/issues/${issueId}`, { issueId, includeAllFields });
+
+      const fields = includeAllFields 
+        ? FieldSelector.getCompleteIssueFields()
+        : FieldSelector.getEssentialIssueFields();
+
+      const response = await this.api.get(`/issues/${issueId}`, {
+        params: { fields }
+      });
+
+      const issue = response.data;
+      
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            issue: issue,
+            fieldsIncluded: includeAllFields ? 'complete' : 'essential',
+            metadata: {
+              customFieldsCount: issue.customFields?.length || 0,
+              attachmentsCount: issue.attachments?.length || 0,
+              commentsCount: issue.commentsCount || 0,
+              linksCount: issue.links?.length || 0,
+              tags: issue.tags?.map((t: any) => t.name) || []
+            }
+          }, null, 2)
+        }]
+      };
+
+    } catch (error) {
+      logError(error as Error, { method: 'getIssue', issueId });
+      throw new Error(`Failed to get issue ${issueId}: ${getErrorMessage(error)}`);
+    }
+  }
+
+  /**
+   * Search issues with comprehensive field selection and advanced filtering
+   */
+  async searchIssues(params: {
+    query?: string;
+    projectId?: string;
+    assignee?: string;
+    reporter?: string;
+    state?: string;
+    priority?: string;
+    type?: string;
+    tags?: string[];
+    includeAllFields?: boolean;
+    limit?: number;
+    skip?: number;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
+  }): Promise<MCPResponse> {
+    try {
+      logApiCall('GET', '/issues', params);
+
+      // Build YouTrack query
+      const queryParts: string[] = [];
+      
+      if (params.projectId) {
+        queryParts.push(`project: ${params.projectId}`);
+      }
+      
+      if (params.assignee) {
+        queryParts.push(`Assignee: ${params.assignee}`);
+      }
+      
+      if (params.reporter) {
+        queryParts.push(`Reporter: ${params.reporter}`);
+      }
+      
+      if (params.state) {
+        queryParts.push(`State: ${params.state}`);
+      }
+      
+      if (params.priority) {
+        queryParts.push(`Priority: ${params.priority}`);
+      }
+      
+      if (params.type) {
+        queryParts.push(`Type: ${params.type}`);
+      }
+      
+      if (params.tags && params.tags.length > 0) {
+        queryParts.push(`tag: {${params.tags.join(' ')}}`);
+      }
+      
+      if (params.query) {
+        queryParts.push(params.query);
+      }
+
+      const searchQuery = queryParts.join(' ');
+      
+      const fields = params.includeAllFields 
+        ? FieldSelector.getCompleteIssueFields()
+        : FieldSelector.getSearchResultFields();
+
+      const apiParams: any = {
+        fields: fields,
+        $top: params.limit || 50,
+        $skip: params.skip || 0
+      };
+
+      // Only add query if it's not empty
+      if (searchQuery && searchQuery.trim()) {
+        apiParams.query = searchQuery;
+      }
+
+      if (params.sortBy) {
+        apiParams.orderBy = `${params.sortBy} ${params.sortOrder || 'asc'}`;
+      }
+
+      const response = await this.api.get('/issues', { params: apiParams });
+      const issues = response.data;
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            issues: issues,
+            query: searchQuery,
+            fieldsIncluded: params.includeAllFields ? 'complete' : 'search_optimized',
+            metadata: {
+              totalCount: issues.length,
+              hasMore: issues.length === (params.limit || 50),
+              filters: {
+                projectId: params.projectId,
+                assignee: params.assignee,
+                reporter: params.reporter,
+                state: params.state,
+                priority: params.priority,
+                type: params.type,
+                tags: params.tags
+              }
+            }
+          }, null, 2)
+        }]
+      };
+
+    } catch (error) {
+      logError(error as Error, { method: 'searchIssues', params });
+      throw new Error(`Failed to search issues: ${getErrorMessage(error)}`);
+    }
+  }
+
+  /**
+   * Get issues for a project with comprehensive filtering
+   */
+  async getProjectIssues(params: {
+    projectId: string;
+    state?: string;
+    assignee?: string;
+    includeAllFields?: boolean;
+    limit?: number;
+    skip?: number;
+  }): Promise<MCPResponse> {
+    return this.searchIssues({
+      projectId: params.projectId,
+      state: params.state,
+      assignee: params.assignee,
+      includeAllFields: params.includeAllFields,
+      limit: params.limit,
+      skip: params.skip
+    });
   }
 
   async getProjectIssuesSummary(projectId: string): Promise<MCPResponse> {
@@ -788,30 +1221,33 @@ export class YouTrackClient {
   }
 
   /**
-   * Get project custom fields by analyzing existing issues
+   * Get project custom fields using the new custom fields manager
    */
   async getProjectCustomFields(projectId: string): Promise<ProjectCustomField[]> {
     try {
-      const cacheKey = `project-custom-fields-${projectId}`;
-      const cached = this.cache.get<ProjectCustomField[]>(cacheKey);
-      if (cached) {
-        return cached;
-      }
-
-      logApiCall('GET', `/admin/projects/${projectId}/customFields`);
-      const response = await this.api.get(`/admin/projects/${projectId}/customFields`, {
-        params: {
-          fields: 'field(id,name,fieldType(valueType)),bundle(id,values(id,name))',
-        }
-      });
-
-      const customFields: ProjectCustomField[] = response.data || [];
-      this.cache.set(cacheKey, customFields, 300000); // Cache for 5 minutes
-
-      return customFields;
+      const resolvedProjectId = await this.resolveProjectId(projectId);
+      const customFields = await this.customFieldsManager.getProjectCustomFields(resolvedProjectId);
+      
+      // Convert to the legacy format for backwards compatibility
+      return customFields.map(cf => ({
+        field: {
+          id: cf.field.id,
+          name: cf.field.name,
+          fieldType: {
+            valueType: cf.field.fieldType.id
+          }
+        },
+        bundle: cf.bundle ? {
+          id: cf.bundle.id,
+          values: cf.bundle.values?.map(v => ({
+            id: v.id || v.name,
+            name: v.name
+          }))
+        } : undefined
+      }));
     } catch (error) {
-      // Fallback to legacy method if admin API fails
-      logger.warn('Admin API failed, falling back to legacy method', { error: getErrorMessage(error) });
+      // Fallback to legacy method if custom fields manager fails
+      logger.warn('Custom fields manager failed, falling back to legacy method', { error: getErrorMessage(error) });
       return this.getProjectCustomFieldsLegacy(projectId);
     }
   }
@@ -3143,5 +3579,191 @@ export class YouTrackClient {
     }
     
     return recommendations;
+  }
+
+  /**
+   * Dynamically discover all custom fields for a project
+   */
+  async discoverProjectFields(projectId: string): Promise<MCPResponse> {
+    try {
+      logApiCall('GET', `/admin/projects/${projectId}/customFields`, { projectId });
+      
+      const projectFields = await this.dynamicFieldManager.discoverProjectFields(projectId);
+      
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            projectInfo: {
+              id: projectFields.projectId,
+              name: projectFields.projectName,
+              shortName: projectFields.projectShortName
+            },
+            fields: projectFields.fields,
+            summary: {
+              totalFields: projectFields.fields.length,
+              fieldTypes: Array.from(projectFields.fieldsByType.keys()),
+              requiredFields: projectFields.fields.filter(f => !f.canBeEmpty).length,
+              optionalFields: projectFields.fields.filter(f => f.canBeEmpty).length
+            },
+            fieldsByCategory: await this.dynamicFieldManager.getProjectFieldSchema(projectId)
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, { method: 'discoverProjectFields', projectId });
+      throw new Error(`Failed to discover project fields: ${getErrorMessage(error)}`);
+    }
+  }
+
+  /**
+   * Get available values for a specific field in a project
+   */
+  async getProjectFieldValues(projectId: string, fieldName: string): Promise<MCPResponse> {
+    try {
+      logApiCall('GET', `/admin/projects/${projectId}/customFields`, { projectId, fieldName });
+      
+      const field = await this.dynamicFieldManager.getFieldByName(projectId, fieldName);
+      if (!field) {
+        throw new Error(`Field '${fieldName}' not found in project ${projectId}`);
+      }
+
+      const values = await this.dynamicFieldManager.getFieldValues(projectId, fieldName);
+      
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            field: {
+              name: field.field.name,
+              type: field.field.fieldType.valueType,
+              canBeEmpty: field.canBeEmpty,
+              isPublic: field.isPublic
+            },
+            values: values,
+            valuesCount: values.length
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, { method: 'getProjectFieldValues', projectId, fieldName });
+      throw new Error(`Failed to get field values: ${getErrorMessage(error)}`);
+    }
+  }
+
+  /**
+   * Compare field configurations between two projects
+   */
+  async compareProjectFields(projectId1: string, projectId2: string): Promise<MCPResponse> {
+    try {
+      logApiCall('GET', '/admin/projects/compare', { projectId1, projectId2 });
+      
+      const comparison = await this.dynamicFieldManager.compareProjectFields(projectId1, projectId2);
+      const [fields1, fields2] = await Promise.all([
+        this.dynamicFieldManager.discoverProjectFields(projectId1),
+        this.dynamicFieldManager.discoverProjectFields(projectId2)
+      ]);
+      
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            project1: {
+              id: fields1.projectId,
+              name: fields1.projectName,
+              shortName: fields1.projectShortName,
+              fieldCount: fields1.fields.length
+            },
+            project2: {
+              id: fields2.projectId,
+              name: fields2.projectName,
+              shortName: fields2.projectShortName,
+              fieldCount: fields2.fields.length
+            },
+            comparison: {
+              commonFields: comparison.common,
+              uniqueToProject1: comparison.onlyInProject1,
+              uniqueToProject2: comparison.onlyInProject2,
+              differentTypes: comparison.different,
+              similarity: Math.round((comparison.common.length / Math.max(fields1.fields.length, fields2.fields.length)) * 100)
+            }
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, { method: 'compareProjectFields', projectId1, projectId2 });
+      throw new Error(`Failed to compare project fields: ${getErrorMessage(error)}`);
+    }
+  }
+
+  /**
+   * Get dynamic field schema for a project (useful for form generation)
+   */
+  async getProjectFieldSchema(projectId: string): Promise<MCPResponse> {
+    try {
+      logApiCall('GET', `/admin/projects/${projectId}/schema`, { projectId });
+      
+      const schema = await this.dynamicFieldManager.getProjectFieldSchema(projectId);
+      
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            projectId,
+            schema: {
+              required: schema.required.map(f => ({
+                name: f.field.name,
+                type: f.field.fieldType.valueType,
+                values: f.bundle?.values?.map(v => ({ id: v.id, name: v.name })) || []
+              })),
+              optional: schema.optional.map(f => ({
+                name: f.field.name,
+                type: f.field.fieldType.valueType,
+                values: f.bundle?.values?.map(v => ({ id: v.id, name: v.name })) || []
+              })),
+              byCategory: Object.entries(schema.byCategory).reduce((acc, [category, fields]) => {
+                acc[category] = fields.map(f => ({
+                  name: f.field.name,
+                  type: f.field.fieldType.valueType,
+                  required: !f.canBeEmpty
+                }));
+                return acc;
+              }, {} as Record<string, any[]>)
+            }
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, { method: 'getProjectFieldSchema', projectId });
+      throw new Error(`Failed to get project field schema: ${getErrorMessage(error)}`);
+    }
+  }
+
+  /**
+   * Get summary of all discovered project fields
+   */
+  async getAllProjectFieldsSummary(): Promise<MCPResponse> {
+    try {
+      const summary = this.dynamicFieldManager.getProjectFieldsSummary();
+      
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            discoveredProjects: summary,
+            totalProjects: summary.length,
+            totalUniqueFields: [...new Set(summary.flatMap(p => p.fieldCount))].length
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, { method: 'getAllProjectFieldsSummary' });
+      throw new Error(`Failed to get project fields summary: ${getErrorMessage(error)}`);
+    }
   }
 }
