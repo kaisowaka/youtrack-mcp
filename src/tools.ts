@@ -1337,4 +1337,56 @@ export const toolDefinitions = [
       required: ['projectId'],
     },
   },
+  
+  // Batch dependency routing
+  {
+    name: 'route_multiple_dependencies',
+    description: 'Route multiple issue dependencies in batch with circular dependency validation',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'The YouTrack project ID'
+        },
+        dependencies: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              sourceIssueId: {
+                type: 'string',
+                description: 'Source issue ID that depends on target'
+              },
+              targetIssueId: {
+                type: 'string', 
+                description: 'Target issue ID that source depends on'
+              },
+              dependencyType: {
+                type: 'string',
+                enum: ['FS', 'SS', 'FF', 'SF'],
+                description: 'Dependency type: FS (Finish-to-Start), SS (Start-to-Start), FF (Finish-to-Finish), SF (Start-to-Finish)'
+              },
+              lag: {
+                type: 'number',
+                description: 'Lag time in days (positive for delay, negative for lead time)'
+              },
+              constraint: {
+                type: 'string',
+                enum: ['hard', 'soft'],
+                description: 'Constraint type for dependency enforcement'
+              }
+            },
+            required: ['sourceIssueId', 'targetIssueId', 'dependencyType']
+          },
+          description: 'Array of dependencies to create'
+        },
+        validateCircular: {
+          type: 'boolean',
+          description: 'Whether to validate for circular dependencies before creating links'
+        }
+      },
+      required: ['projectId', 'dependencies']
+    },
+  },
 ];

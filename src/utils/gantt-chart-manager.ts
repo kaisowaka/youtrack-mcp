@@ -65,10 +65,87 @@ interface CriticalPathAnalysis {
 }
 
 export class GanttChartManager {
-  constructor(private client: YouTrackClient) {}
+  private client: YouTrackClient;
+  private cache: Map<string, { data: any; timestamp: number; ttl: number }> = new Map();
+  private readonly CACHE_TTL = 300000; // 5 minutes default TTL
+
+  constructor(client: YouTrackClient) {
+    this.client = client;
+  }
 
   /**
-   * Generate comprehensive Gantt chart data with dependencies and critical path
+   * Cache management for performance optimization
+   */
+  private getCachedData<T>(key: string): T | null {
+    const cached = this.cache.get(key);
+    if (cached && Date.now() - cached.timestamp < cached.ttl) {
+      return cached.data as T;
+    }
+    this.cache.delete(key);
+    return null;
+  }
+
+  private setCachedData(key: string, data: any, ttl: number = this.CACHE_TTL): void {
+    this.cache.set(key, {
+      data,
+      timestamp: Date.now(),
+      ttl
+    });
+  }
+
+  private clearCache(): void {
+    this.cache.clear();
+  }
+
+    /**
+   * Enhanced input validation for Gantt chart parameters
+   */
+  private validateGanttParams(params: {
+    projectId: string;
+    startDate?: string;
+    endDate?: string;
+    includeCompleted?: boolean;
+    includeCriticalPath?: boolean;
+    includeResources?: boolean;
+    hierarchicalView?: boolean;
+  }): void {
+    if (!params.projectId || typeof params.projectId !== 'string') {
+      throw new Error('Project ID is required and must be a string');
+    }
+
+    if (params.startDate && !this.isValidDate(params.startDate)) {
+      throw new Error('Start date must be in YYYY-MM-DD format');
+    }
+
+    if (params.endDate && !this.isValidDate(params.endDate)) {
+      throw new Error('End date must be in YYYY-MM-DD format');
+    }
+
+    if (params.startDate && params.endDate) {
+      const start = new Date(params.startDate);
+      const end = new Date(params.endDate);
+      if (start >= end) {
+        throw new Error('Start date must be before end date');
+      }
+      
+      // Warn for very large date ranges
+      const daysDiff = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+      if (daysDiff > 365 * 2) { // More than 2 years
+        logger.warn(`Large date range detected: ${daysDiff} days. Consider smaller ranges for better performance.`);
+      }
+    }
+  }
+
+  private isValidDate(dateString: string): boolean {
+    const regex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!regex.test(dateString)) return false;
+    
+    const date = new Date(dateString);
+    return date instanceof Date && !isNaN(date.getTime());
+  }
+
+  /**
+   * Generate comprehensive Gantt chart with advanced dependency routing
    */
   async generateGanttChart(params: {
     projectId: string;
@@ -79,8 +156,21 @@ export class GanttChartManager {
     includeResources?: boolean;
     hierarchicalView?: boolean;
   }): Promise<MCPResponse> {
+    const startTime = Date.now();
+    
     try {
+      // Enhanced input validation
+      this.validateGanttParams(params);
+      
       logApiCall('GET', '/gantt-chart', params);
+      
+      // Check cache first for performance
+      const cacheKey = `gantt_${JSON.stringify(params)}`;
+      const cached = this.getCachedData<MCPResponse>(cacheKey);
+      if (cached) {
+        logger.info(`Gantt chart served from cache for project ${params.projectId}`);
+        return cached;
+      }
       
       // Get all issues with comprehensive field data
       const issues = await this.getIssuesWithTimingData(params.projectId);
@@ -109,7 +199,10 @@ export class GanttChartManager {
       // Generate statistics and insights
       const statistics = this.generateGanttStatistics(filteredItems, criticalPath, resources);
       
-      return {
+      const executionTime = Date.now() - startTime;
+      logger.info(`Gantt chart generated for project ${params.projectId} in ${executionTime}ms`);
+      
+      const result = {
         content: [{
           type: 'text',
           text: JSON.stringify({
@@ -118,6 +211,7 @@ export class GanttChartManager {
               projectId: params.projectId,
               metadata: {
                 generated: new Date().toISOString(),
+                executionTime: `${executionTime}ms`,
                 dateRange: {
                   start: params.startDate,
                   end: params.endDate
@@ -127,6 +221,12 @@ export class GanttChartManager {
                   includeCriticalPath: params.includeCriticalPath,
                   includeResources: params.includeResources,
                   hierarchicalView: params.hierarchicalView
+                },
+                performance: {
+                  totalItems: filteredItems.length,
+                  itemsWithDependencies: filteredItems.filter(item => item.dependencies.length > 0).length,
+                  criticalPathLength: criticalPath?.path?.length || 0,
+                  resourcesAnalyzed: resources?.length || 0
                 }
               },
               items: filteredItems,
@@ -138,6 +238,11 @@ export class GanttChartManager {
           }, null, 2)
         }]
       };
+      
+      // Cache the result for 5 minutes
+      this.setCachedData(cacheKey, result, this.CACHE_TTL);
+      
+      return result;
     } catch (error) {
       logError(error as Error, params);
       throw new Error(`Failed to generate Gantt chart: ${getErrorMessage(error)}`);
@@ -1296,6 +1401,103 @@ export class GanttChartManager {
     }
     
     return optimizations;
+  }
+
+  /**
+   * Batch dependency routing for multiple issues
+   */
+  async routeMultipleDependencies(params: {
+    projectId: string;
+    dependencies: Array<{
+      sourceIssueId: string;
+      targetIssueId: string;
+      dependencyType: 'FS' | 'SS' | 'FF' | 'SF';
+      lag?: number;
+      constraint?: 'hard' | 'soft';
+    }>;
+    validateCircular?: boolean;
+  }): Promise<MCPResponse> {
+    try {
+      const results: Array<{
+        source: string;
+        target: string;
+        success: boolean;
+        error?: string;
+      }> = [];
+
+      // Pre-validate for circular dependencies if requested
+      if (params.validateCircular) {
+        for (const dep of params.dependencies) {
+          const circularCheck = await this.detectCircularDependencies(
+            params.projectId,
+            dep.sourceIssueId,
+            dep.targetIssueId
+          );
+          
+          if (circularCheck.hasCircularDependency) {
+            results.push({
+              source: dep.sourceIssueId,
+              target: dep.targetIssueId,
+              success: false,
+              error: `Circular dependency detected: ${circularCheck.path?.join(' -> ')}`
+            });
+            continue;
+          }
+        }
+      }
+
+      // Process dependencies in parallel (with concurrency limit)
+      const batchSize = 5; // Limit concurrent operations
+      for (let i = 0; i < params.dependencies.length; i += batchSize) {
+        const batch = params.dependencies.slice(i, i + batchSize);
+        const batchPromises = batch.map(async (dep) => {
+          try {
+            await this.routeIssueDependencies({
+              projectId: params.projectId,
+              sourceIssueId: dep.sourceIssueId,
+              targetIssueId: dep.targetIssueId,
+              dependencyType: dep.dependencyType,
+              lag: dep.lag,
+              constraint: dep.constraint
+            });
+            
+            return {
+              source: dep.sourceIssueId,
+              target: dep.targetIssueId,
+              success: true
+            };
+          } catch (error) {
+            return {
+              source: dep.sourceIssueId,
+              target: dep.targetIssueId,
+              success: false,
+              error: getErrorMessage(error)
+            };
+          }
+        });
+
+        const batchResults = await Promise.all(batchPromises);
+        results.push(...batchResults);
+      }
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            batchResults: {
+              total: params.dependencies.length,
+              successful: results.filter(r => r.success).length,
+              failed: results.filter(r => !r.success).length,
+              details: results
+            }
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, { method: 'routeMultipleDependencies', params });
+      throw new Error(`Failed to route multiple dependencies: ${getErrorMessage(error)}`);
+    }
   }
 
   private calculateWorkingDays(allocations: Array<{startDate: string; endDate: string; hours: number}>): number {

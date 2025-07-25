@@ -504,6 +504,20 @@ class YouTrackMCPServer {
             });
             break;
 
+          case 'route_multiple_dependencies':
+            result = await this.youtrackClient.routeMultipleDependencies({
+              projectId: args.projectId as string,
+              dependencies: args.dependencies as Array<{
+                sourceIssueId: string;
+                targetIssueId: string;
+                dependencyType: 'FS' | 'SS' | 'FF' | 'SF';
+                lag?: number;
+                constraint?: 'hard' | 'soft';
+              }>,
+              validateCircular: args.validateCircular as boolean
+            });
+            break;
+
           default:
             throw new McpError(
               ErrorCode.MethodNotFound,

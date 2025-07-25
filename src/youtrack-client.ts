@@ -3772,4 +3772,27 @@ export class YouTrackClient {
       throw new Error(`Failed to calculate critical path: ${getErrorMessage(error)}`);
     }
   }
+
+  /**
+   * Route multiple dependencies in batch
+   */
+  async routeMultipleDependencies(params: {
+    projectId: string;
+    dependencies: Array<{
+      sourceIssueId: string;
+      targetIssueId: string;
+      dependencyType: 'FS' | 'SS' | 'FF' | 'SF';
+      lag?: number;
+      constraint?: 'hard' | 'soft';
+    }>;
+    validateCircular?: boolean;
+  }): Promise<MCPResponse> {
+    try {
+      const result = await this.ganttChartManager.routeMultipleDependencies(params);
+      return result;
+    } catch (error) {
+      logError(error as Error, { method: 'routeMultipleDependencies', params });
+      throw new Error(`Failed to route multiple dependencies: ${getErrorMessage(error)}`);
+    }
+  }
 }
