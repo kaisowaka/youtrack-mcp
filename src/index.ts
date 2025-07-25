@@ -708,3 +708,37 @@ class YouTrackMCPServer {
     logger.info('YouTrack MCP Server stopped');
   }
 }
+
+// Main execution
+async function main() {
+  try {
+    logger.info('Initializing YouTrack MCP Server...');
+    const server = new YouTrackMCPServer();
+    
+    // Handle graceful shutdown
+    process.on('SIGINT', async () => {
+      logger.info('Received SIGINT, shutting down gracefully...');
+      await server.stop();
+      process.exit(0);
+    });
+
+    process.on('SIGTERM', async () => {
+      logger.info('Received SIGTERM, shutting down gracefully...');
+      await server.stop();
+      process.exit(0);
+    });
+
+    // Start the server
+    logger.info('Starting MCP server...');
+    await server.run();
+  } catch (error) {
+    logger.error('Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+// Always run the main function when this file is executed
+main().catch((error) => {
+  console.error('Fatal error during startup:', error);
+  process.exit(1);
+});
