@@ -14,6 +14,7 @@ import { ConfigManager } from './config.js';
 import { toolDefinitions } from './tools.js';
 import { logger } from './logger.js';
 import { WebhookHandler } from './webhooks.js';
+import { SimpleArticleHierarchy } from './simple-article-hierarchy.js';
 
 // Load environment variables
 dotenv.config();
@@ -23,6 +24,7 @@ class YouTrackMCPServer {
   private youtrackClient: YouTrackClient;
   private config: ConfigManager;
   private webhookHandler?: WebhookHandler;
+  private simpleHierarchy?: SimpleArticleHierarchy;
 
   constructor() {
     this.config = new ConfigManager();
@@ -38,6 +40,9 @@ class YouTrackMCPServer {
     // Use single consolidated YouTrack client
     this.youtrackClient = new YouTrackClient(youtrackUrl, youtrackToken);
     logger.info('Consolidated YouTrack client initialized successfully');
+
+    // Initialize simple hierarchy helper
+    this.simpleHierarchy = new SimpleArticleHierarchy(this.youtrackClient);
 
     this.server = new Server(
       {
@@ -383,6 +388,124 @@ class YouTrackMCPServer {
             });
             break;
 
+          case 'link_articles_with_fallback':
+            if (!this.simpleHierarchy) {
+              throw new McpError(ErrorCode.InternalError, 'Simple hierarchy not initialized');
+            }
+            const linkResult = await this.simpleHierarchy.linkChildToParent({
+              parentArticleId: args.parentId as string,
+              childArticleId: args.childId as string,
+              addContentLinks: args.fallbackToContent as boolean ?? true,
+            });
+            result = {
+              content: [{
+                type: 'text',
+                text: JSON.stringify(linkResult, null, 2)
+              }]
+            };
+            break;
+
+          case 'get_article_hierarchy':
+            if (!this.simpleHierarchy) {
+              throw new McpError(ErrorCode.InternalError, 'Simple hierarchy not initialized');
+            }
+            const hierarchyResult = await this.simpleHierarchy.getChildArticles({
+              parentArticleId: args.articleId as string,
+              includeContent: true,
+              fallbackToContentSearch: true,
+            });
+            result = {
+              content: [{
+                type: 'text',
+                text: JSON.stringify(hierarchyResult, null, 2)
+              }]
+            };
+            break;
+
+          case 'create_article_group':
+            const articles = args.articles as Array<{
+              title: string;
+              content: string;
+              tags?: string[];
+              parentIndex?: number;
+            }>;
+            const projectId = args.projectId as string;
+            
+            // Simple implementation: create articles sequentially and link them
+            const groupResults = {
+              created: [] as Array<{ id: string; title: string; index: number }>,
+              errors: [] as Array<{ index: number; error: string }>,
+              links: [] as Array<{ success: boolean; parentId: string; childId: string; method: string; error?: string }>
+            };
+
+            // Create all articles first
+            for (let i = 0; i < articles.length; i++) {
+              try {
+                const articleResponse = await this.youtrackClient.createArticle({
+                  title: articles[i].title,
+                  content: articles[i].content,
+                  projectId,
+                  tags: articles[i].tags || []
+                });
+
+                // Extract article ID (simple extraction)
+                const articleId = this.extractArticleIdFromResponse(articleResponse);
+                groupResults.created.push({ 
+                  id: articleId, 
+                  title: articles[i].title, 
+                  index: i 
+                });
+              } catch (error) {
+                groupResults.errors.push({ 
+                  index: i, 
+                  error: error instanceof Error ? error.message : String(error)
+                });
+              }
+            }
+
+            // Create links between articles
+            for (let i = 0; i < articles.length; i++) {
+              const article = articles[i];
+              if (article.parentIndex !== undefined) {
+                const child = groupResults.created.find(c => c.index === i);
+                const parent = groupResults.created.find(c => c.index === article.parentIndex);
+                
+                if (child && parent && this.simpleHierarchy) {
+                  try {
+                    const linkResult = await this.simpleHierarchy.linkChildToParent({
+                      parentArticleId: parent.id,
+                      childArticleId: child.id,
+                      addContentLinks: true
+                    });
+                    
+                    groupResults.links.push({
+                      success: linkResult.success,
+                      parentId: parent.id,
+                      childId: child.id,
+                      method: linkResult.success ? 'api' : 'content',
+                      error: linkResult.success ? undefined : linkResult.message
+                    });
+                  } catch (error) {
+                    groupResults.links.push({
+                      success: false,
+                      parentId: parent.id,
+                      childId: child.id,
+                      method: 'failed',
+                      error: error instanceof Error ? error.message : String(error)
+                    });
+                  }
+                }
+              }
+            }
+
+            result = {
+              content: [{
+                type: 'text',
+                text: JSON.stringify(groupResults, null, 2)
+              }]
+            };
+            break;
+
           // ===========================
           // PHASE 4: GANTT CHARTS & DEPENDENCIES
           // ===========================
@@ -563,6 +686,24 @@ class YouTrackMCPServer {
       
       logger.info('Webhook handler initialized', { port });
     }
+  }
+
+  /**
+   * Helper method to extract article ID from YouTrack API response
+   */
+  private extractArticleIdFromResponse(response: any): string {
+    // Try different ways to extract the ID based on the response structure
+    if (response.id) {
+      return response.id;
+    }
+    if (response.content && response.content[0] && response.content[0].text) {
+      const match = response.content[0].text.match(/Article ID: ([a-zA-Z0-9-]+)/);
+      if (match) return match[1];
+    }
+    if (response.articleId) {
+      return response.articleId;
+    }
+    throw new Error('Could not extract article ID from response');
   }
 
   public async run(): Promise<void> {

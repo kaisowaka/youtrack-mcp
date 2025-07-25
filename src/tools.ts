@@ -796,6 +796,84 @@ export const toolDefinitions = [
       required: ['parentArticleId'],
     },
   },
+  {
+    name: 'link_articles_with_fallback',
+    description: 'Link two articles as parent-child with automatic fallback to content-based linking if API fails',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        parentId: {
+          type: 'string',
+          description: 'The parent article ID',
+        },
+        childId: {
+          type: 'string',
+          description: 'The child article ID',
+        },
+        fallbackToContent: {
+          type: 'boolean',
+          description: 'Whether to fallback to content-based linking if API linking fails',
+          default: true,
+        },
+      },
+      required: ['parentId', 'childId'],
+    },
+  },
+  {
+    name: 'get_article_hierarchy',
+    description: 'Get comprehensive article hierarchy including parent, children, and siblings from content links',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        articleId: {
+          type: 'string',
+          description: 'The article ID to analyze hierarchy for',
+        },
+      },
+      required: ['articleId'],
+    },
+  },
+  {
+    name: 'create_article_group',
+    description: 'Create multiple related articles with automatic parent-child linking (simple batch operation)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        articles: {
+          type: 'array',
+          description: 'Array of articles to create',
+          items: {
+            type: 'object',
+            properties: {
+              title: {
+                type: 'string',
+                description: 'Article title',
+              },
+              content: {
+                type: 'string',
+                description: 'Article content',
+              },
+              tags: {
+                type: 'array',
+                description: 'Article tags',
+                items: { type: 'string' },
+              },
+              parentIndex: {
+                type: 'number',
+                description: 'Index of the parent article in this array (optional)',
+              },
+            },
+            required: ['title', 'content'],
+          },
+        },
+        projectId: {
+          type: 'string',
+          description: 'The project ID to create articles in',
+        },
+      },
+      required: ['articles', 'projectId'],
+    },
+  },
 
   // =====================================================
   // PHASE 4: GANTT CHARTS & ADVANCED PROJECT MANAGEMENT
