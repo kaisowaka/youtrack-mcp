@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+// Set MCP server mode FIRST, before any imports that use logger
+process.env.MCP_SERVER = 'true';
+
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -14,7 +17,6 @@ import { ConfigManager } from './config.js';
 import { toolDefinitions } from './tools.js';
 import { logger } from './logger.js';
 import { WebhookHandler } from './webhooks.js';
-import { SimpleArticleHierarchy } from './simple-article-hierarchy.js';
 
 // Load environment variables
 dotenv.config();
@@ -24,7 +26,6 @@ class YouTrackMCPServer {
   private youtrackClient: YouTrackClient;
   private config: ConfigManager;
   private webhookHandler?: WebhookHandler;
-  private simpleHierarchy?: SimpleArticleHierarchy;
 
   constructor() {
     this.config = new ConfigManager();
@@ -40,9 +41,6 @@ class YouTrackMCPServer {
     // Use single consolidated YouTrack client
     this.youtrackClient = new YouTrackClient(youtrackUrl, youtrackToken);
     logger.info('Consolidated YouTrack client initialized successfully');
-
-    // Initialize simple hierarchy helper
-    this.simpleHierarchy = new SimpleArticleHierarchy(this.youtrackClient);
 
     this.server = new Server(
       {
@@ -389,37 +387,19 @@ class YouTrackMCPServer {
             break;
 
           case 'link_articles_with_fallback':
-            if (!this.simpleHierarchy) {
-              throw new McpError(ErrorCode.InternalError, 'Simple hierarchy not initialized');
-            }
-            const linkResult = await this.simpleHierarchy.linkChildToParent({
+            // Use the existing linkSubArticle method instead of complex hierarchy
+            result = await this.youtrackClient.linkSubArticle({
               parentArticleId: args.parentId as string,
               childArticleId: args.childId as string,
-              addContentLinks: args.fallbackToContent as boolean ?? true,
             });
-            result = {
-              content: [{
-                type: 'text',
-                text: JSON.stringify(linkResult, null, 2)
-              }]
-            };
             break;
 
           case 'get_article_hierarchy':
-            if (!this.simpleHierarchy) {
-              throw new McpError(ErrorCode.InternalError, 'Simple hierarchy not initialized');
-            }
-            const hierarchyResult = await this.simpleHierarchy.getChildArticles({
+            // Use the existing getSubArticles method instead of complex hierarchy
+            result = await this.youtrackClient.getSubArticles({
               parentArticleId: args.articleId as string,
               includeContent: true,
-              fallbackToContentSearch: true,
             });
-            result = {
-              content: [{
-                type: 'text',
-                text: JSON.stringify(hierarchyResult, null, 2)
-              }]
-            };
             break;
 
           case 'create_article_group':
@@ -470,20 +450,19 @@ class YouTrackMCPServer {
                 const child = groupResults.created.find(c => c.index === i);
                 const parent = groupResults.created.find(c => c.index === article.parentIndex);
                 
-                if (child && parent && this.simpleHierarchy) {
+                if (child && parent) {
                   try {
-                    const linkResult = await this.simpleHierarchy.linkChildToParent({
+                    const linkResult = await this.youtrackClient.linkSubArticle({
                       parentArticleId: parent.id,
-                      childArticleId: child.id,
-                      addContentLinks: true
+                      childArticleId: child.id
                     });
                     
                     groupResults.links.push({
-                      success: linkResult.success,
+                      success: true,
                       parentId: parent.id,
                       childId: child.id,
-                      method: linkResult.success ? 'api' : 'content',
-                      error: linkResult.success ? undefined : linkResult.message
+                      method: 'api',
+                      error: undefined
                     });
                   } catch (error) {
                     groupResults.links.push({

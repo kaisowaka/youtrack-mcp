@@ -4,7 +4,7 @@ import { logger, logApiCall, logError } from './logger.js';
 import { SimpleCache } from './cache.js';
 import { CustomFieldsManager, CustomFieldValue } from './custom-fields-manager.js';
 import { FieldSelector } from './field-selector.js';
-import { DynamicProjectFieldManager, ProjectFieldsInfo } from './dynamic-field-manager.js';
+import { ProjectFieldManager, ProjectFieldsInfo } from './field-manager.js';
 import { GanttChartManager } from './utils/gantt-chart-manager.js';
 
 export interface MCPResponse {
@@ -327,7 +327,7 @@ export class YouTrackClient {
   private api: AxiosInstance;
   private cache: SimpleCache;
   private customFieldsManager: CustomFieldsManager;
-  private dynamicFieldManager: DynamicProjectFieldManager;
+  private dynamicFieldManager: ProjectFieldManager;
   private ganttChartManager: GanttChartManager;
 
   constructor(baseUrl: string, token: string) {
@@ -345,7 +345,7 @@ export class YouTrackClient {
 
     // Initialize field managers
     this.customFieldsManager = new CustomFieldsManager(this.api, this.cache);
-    this.dynamicFieldManager = new DynamicProjectFieldManager(this.api, this.cache);
+    this.dynamicFieldManager = new ProjectFieldManager(this.api, this.cache);
     this.ganttChartManager = new GanttChartManager(this);
 
     // Add retry logic for transient failures
@@ -622,16 +622,8 @@ export class YouTrackClient {
         } : undefined
       });
       
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify({
-            success: false,
-            error: getErrorMessage(error),
-            details: error instanceof AxiosError ? error.response?.data : null
-          }, null, 2),
-        }],
-      };
+      // Don't mask errors - let them bubble up to MCP properly
+      throw error;
     }
   }
 
@@ -2510,29 +2502,88 @@ export class YouTrackClient {
         throw new Error('Project ID is required for article creation');
       }
 
-      // For now, skip tags as they require tag IDs
-      // TODO: Implement tag lookup and creation
-      // if (params.tags && params.tags.length > 0) {
-      //   articleData.tags = params.tags.map(tag => ({ name: tag }));
-      // }
+      // Note: Tags will be added separately after article creation
+      // YouTrack API doesn't support adding tags during article creation
 
       logApiCall('POST', '/articles', articleData);
       const response = await this.api.post('/articles', articleData);
+
+      const articleId = response.data.id;
+
+      // Add tags separately if provided
+      if (params.tags && params.tags.length > 0) {
+        for (const tagName of params.tags) {
+          try {
+            // Create or get tag, then add it to the article
+            await this.addTagToArticle(articleId, tagName);
+          } catch (tagError) {
+            // Log error but don't fail the whole operation
+            logError(tagError as Error, { message: 'Failed to add tag', articleId, tagName });
+          }
+        }
+      }
 
       return {
         content: [{
           type: 'text',
           text: JSON.stringify({
             success: true,
-            articleId: response.data.id,
+            articleId: articleId,
             message: `Article "${params.title}" created successfully`,
-            article: response.data
+            article: response.data,
+            tagsAdded: params.tags || []
           }, null, 2)
         }]
       };
     } catch (error) {
       logError(error as Error, params);
       throw new Error(`Failed to create article: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Helper method to add a tag to an article
+   */
+  private async addTagToArticle(articleId: string, tagName: string): Promise<void> {
+    try {
+      // First, try to find if the tag already exists
+      const existingTagsResponse = await this.api.get('/tags', {
+        params: {
+          query: tagName,
+          fields: 'id,name'
+        }
+      });
+
+      let tagId: string;
+      
+      if (existingTagsResponse.data && existingTagsResponse.data.length > 0) {
+        // Tag exists, use it
+        const existingTag = existingTagsResponse.data.find((tag: any) => tag.name === tagName);
+        if (existingTag) {
+          tagId = existingTag.id;
+        } else {
+          // Create new tag
+          const newTagResponse = await this.api.post('/tags', {
+            name: tagName
+          });
+          tagId = newTagResponse.data.id;
+        }
+      } else {
+        // Create new tag
+        const newTagResponse = await this.api.post('/tags', {
+          name: tagName
+        });
+        tagId = newTagResponse.data.id;
+      }
+
+      // Add the tag to the article
+      await this.api.post(`/articles/${articleId}/tags`, {
+        id: tagId,
+        name: tagName
+      });
+
+    } catch (error) {
+      throw new Error(`Failed to add tag "${tagName}" to article ${articleId}: ${(error as Error).message}`);
     }
   }
 
@@ -2554,14 +2605,15 @@ export class YouTrackClient {
       if (params.summary) updateData.summary = params.summary;
       if (params.content) updateData.content = params.content;
       
-      // For now, skip tags as they require tag IDs
-      // TODO: Implement tag lookup and creation
-      // if (params.tags && params.tags.length > 0) {
-      //   updateData.tags = params.tags.map(tag => ({ name: tag }));
-      // }
-
       logApiCall('POST', `/articles/${params.articleId}`, updateData);
       await this.api.post(`/articles/${params.articleId}`, updateData);
+
+      // Add tags separately if provided (YouTrack requires separate API calls for tags)
+      if (params.tags && params.tags.length > 0) {
+        for (const tag of params.tags) {
+          await this.addTagToArticle(params.articleId, tag);
+        }
+      }
 
       // Get updated article to return
       const verifyResponse = await this.api.get(`/articles/${params.articleId}`, {

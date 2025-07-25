@@ -54,7 +54,7 @@ export interface ProjectFieldsInfo {
   lastUpdated: number;
 }
 
-export class DynamicProjectFieldManager {
+export class ProjectFieldManager {
   private cache: SimpleCache;
   private api: AxiosInstance;
   private projectFieldsCache: Map<string, ProjectFieldsInfo> = new Map();

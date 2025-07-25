@@ -1,33 +1,48 @@
 import winston from 'winston';
 
+// Force no colors for MCP server mode - multiple approaches
+process.env.NO_COLOR = '1';
+process.env.FORCE_COLOR = '0';
+
 export const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
   format: winston.format.combine(
     winston.format.timestamp(),
     winston.format.errors({ stack: true }),
     winston.format.splat(),
-    winston.format.json()
+    // Remove all colors and use simple JSON format
+    winston.format.uncolorize(),
+    winston.format.printf(({ timestamp, level, message, ...meta }) => {
+      // Always output plain JSON for MCP compatibility
+      return JSON.stringify({
+        timestamp,
+        level,
+        message,
+        ...meta
+      });
+    })
   ),
   defaultMeta: { service: 'youtrack-mcp' },
   transports: [
     new winston.transports.File({ filename: 'error.log', level: 'error' }),
     new winston.transports.File({ filename: 'combined.log' }),
+    new winston.transports.Console({
+      stderrLevels: ['error'],
+      // Explicitly disable colors
+      format: winston.format.combine(
+        winston.format.uncolorize(),
+        winston.format.printf(({ timestamp, level, message, ...meta }) => {
+          return JSON.stringify({
+            timestamp,
+            level,
+            message,
+            ...meta
+          });
+        })
+      )
+    })
   ],
 });
-
-if (process.env.NODE_ENV !== 'production' && !process.env.MCP_SERVER) {
-  logger.add(new winston.transports.Console({
-    format: winston.format.combine(
-      winston.format.colorize(),
-      winston.format.simple()
-    ),
-  }));
-} else if (process.env.MCP_SERVER) {
-  // For MCP server mode, use plain JSON output without colors
-  logger.add(new winston.transports.Console({
-    format: winston.format.json()
-  }));
-}
 
 // Helper function for logging API calls
 export function logApiCall(method: string, endpoint: string, params?: any): void {
