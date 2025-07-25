@@ -3795,4 +3795,276 @@ export class YouTrackClient {
       throw new Error(`Failed to route multiple dependencies: ${getErrorMessage(error)}`);
     }
   }
+
+  /**
+   * Create a complete hierarchical documentation structure
+   */
+  async createDocumentationHierarchy(params: {
+    projectId: string;
+    rootTitle: string;
+    rootContent: string;
+    sections: Array<{
+      name: string;
+      description: string;
+      articles: Array<{
+        title: string;
+        content: string;
+        tags?: string[];
+      }>;
+    }>;
+  }): Promise<MCPResponse> {
+    try {
+      const results = {
+        success: true,
+        hierarchy: {
+          projectId: params.projectId,
+          rootArticle: null as any,
+          sections: [] as any[],
+          totalArticlesCreated: 0,
+          structure: {} as any
+        }
+      };
+
+      // 1. Create the root documentation article
+      const rootArticle = await this.createArticle({
+        title: params.rootTitle,
+        content: params.rootContent,
+        projectId: params.projectId,
+        tags: ['documentation', 'root']
+      });
+
+      const rootData = JSON.parse(rootArticle.content[0].text);
+      results.hierarchy.rootArticle = rootData.articleId;
+      results.hierarchy.totalArticlesCreated++;
+
+      // 2. Create sections and their articles
+      for (const section of params.sections) {
+        const sectionResult = {
+          name: section.name,
+          description: section.description,
+          sectionArticle: null as any,
+          articles: [] as any[]
+        };
+
+        // Create section article
+        const sectionArticle = await this.createArticle({
+          title: section.name,
+          content: section.description,
+          projectId: params.projectId,
+          tags: ['documentation', 'section', section.name.toLowerCase().replace(/\s+/g, '-')]
+        });
+
+        const sectionData = JSON.parse(sectionArticle.content[0].text);
+        sectionResult.sectionArticle = sectionData.articleId;
+        results.hierarchy.totalArticlesCreated++;
+
+        // Create articles within the section
+        for (const article of section.articles) {
+          const createdArticle = await this.createArticle({
+            title: article.title,
+            content: article.content,
+            projectId: params.projectId,
+            tags: [
+              'documentation',
+              section.name.toLowerCase().replace(/\s+/g, '-'),
+              ...(article.tags || [])
+            ]
+          });
+
+          const articleData = JSON.parse(createdArticle.content[0].text);
+          sectionResult.articles.push({
+            title: article.title,
+            articleId: articleData.articleId,
+            tags: article.tags || []
+          });
+          results.hierarchy.totalArticlesCreated++;
+        }
+
+        results.hierarchy.sections.push(sectionResult);
+      }
+
+      // 3. Create a structure overview
+      results.hierarchy.structure = {
+        overview: `Created ${results.hierarchy.totalArticlesCreated} articles in hierarchical structure`,
+        navigation: {
+          root: {
+            title: params.rootTitle,
+            articleId: results.hierarchy.rootArticle
+          },
+          sections: results.hierarchy.sections.map(section => ({
+            name: section.name,
+            articleId: section.sectionArticle,
+            articleCount: section.articles.length
+          }))
+        },
+        recommendations: [
+          'Use tags to organize and filter articles',
+          'Create cross-references between related articles',
+          'Maintain consistent naming conventions',
+          'Regular review and update of documentation structure'
+        ]
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(results, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, { method: 'createDocumentationHierarchy', params });
+      throw new Error(`Failed to create documentation hierarchy: ${getErrorMessage(error)}`);
+    }
+  }
+
+  /**
+   * Get hierarchical structure of articles
+   */
+  async getArticleHierarchy(params: {
+    projectId?: string;
+    articleId?: string;
+    maxDepth?: number;
+  }): Promise<MCPResponse> {
+    try {
+      const maxDepth = params.maxDepth || 10;
+      const hierarchy = {
+        success: true,
+        structure: {
+          projectId: params.projectId,
+          startingArticle: params.articleId,
+          maxDepth,
+          articles: [] as any[],
+          totalArticles: 0,
+          maxLevelFound: 0,
+          organizationByTags: {} as Record<string, any[]>
+        }
+      };
+
+      // Get all articles (optionally filtered by project)
+      let articles: any[] = [];
+      
+      if (params.projectId) {
+        // Get articles for specific project
+        const projectArticles = await this.getArticlesByTag({
+          tag: 'documentation',
+          projectId: params.projectId,
+          includeContent: false
+        });
+        const projectData = JSON.parse(projectArticles.content[0].text);
+        articles = projectData.articles || [];
+      } else if (params.articleId) {
+        // Get specific article and its related articles
+        const articleDetail = await this.getArticle({
+          articleId: params.articleId,
+          includeComments: false
+        });
+        const articleData = JSON.parse(articleDetail.content[0].text);
+        articles = [articleData.article];
+        
+        // Get related articles by project
+        if (articleData.article.project?.id) {
+          const relatedArticles = await this.getArticlesByTag({
+            tag: 'documentation',
+            projectId: articleData.article.project.id,
+            includeContent: false
+          });
+          const relatedData = JSON.parse(relatedArticles.content[0].text);
+          articles = articles.concat(relatedData.articles || []);
+        }
+      } else {
+        // Get overall knowledge base stats for hierarchy overview
+        const kbStats = await this.getKnowledgeBaseStats({});
+        const statsData = JSON.parse(kbStats.content[0].text);
+        
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              success: true,
+              message: 'Provide projectId or articleId for detailed hierarchy',
+              overview: statsData.statistics,
+              recommendation: 'Use projectId parameter to get project-specific article hierarchy'
+            }, null, 2)
+          }]
+        };
+      }
+
+      // Organize articles by tags to simulate hierarchy
+      const tagHierarchy: Record<string, any[]> = {};
+      
+      articles.forEach(article => {
+        const tags = article.tags || [];
+        
+        // Determine hierarchy level based on tags
+        let level = 0;
+        if (tags.includes('root')) level = 0;
+        else if (tags.includes('section')) level = 1;
+        else level = 2;
+        
+        const hierarchyInfo = {
+          id: article.id,
+          idReadable: article.idReadable,
+          title: article.summary || article.title,
+          level,
+          tags,
+          project: article.project,
+          created: article.created,
+          updated: article.updated,
+          author: article.reporter?.fullName || article.reporter?.login || 'Unknown',
+          hasContent: !!article.content,
+          isRoot: tags.includes('root'),
+          isSection: tags.includes('section')
+        };
+
+        hierarchy.structure.articles.push(hierarchyInfo);
+        hierarchy.structure.maxLevelFound = Math.max(hierarchy.structure.maxLevelFound, level);
+
+        // Group by primary tag (excluding 'documentation')
+        const primaryTag = tags.find((tag: string) => tag !== 'documentation') || 'uncategorized';
+        if (!tagHierarchy[primaryTag]) {
+          tagHierarchy[primaryTag] = [];
+        }
+        tagHierarchy[primaryTag].push(hierarchyInfo);
+      });
+
+      hierarchy.structure.totalArticles = articles.length;
+      hierarchy.structure.organizationByTags = tagHierarchy;
+
+      // Create navigational structure
+      const navigation = {
+        root: hierarchy.structure.articles.filter(a => a.isRoot),
+        sections: hierarchy.structure.articles.filter(a => a.isSection),
+        articles: hierarchy.structure.articles.filter(a => !a.isRoot && !a.isSection),
+        byTags: Object.keys(tagHierarchy).map(tag => ({
+          tag,
+          count: tagHierarchy[tag].length,
+          articles: tagHierarchy[tag].map(a => ({
+            id: a.id,
+            title: a.title,
+            level: a.level
+          }))
+        }))
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            ...hierarchy,
+            navigation,
+            recommendations: [
+              'Use tags to organize articles hierarchically',
+              'Designate root articles with "root" tag',
+              'Use "section" tag for section articles', 
+              'Create consistent tagging strategy for easy navigation',
+              `Found ${hierarchy.structure.totalArticles} articles across ${hierarchy.structure.maxLevelFound + 1} levels`
+            ]
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, { method: 'getArticleHierarchy', params });
+      throw new Error(`Failed to get article hierarchy: ${getErrorMessage(error)}`);
+    }
+  }
 }
