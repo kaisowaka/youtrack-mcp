@@ -291,6 +291,7 @@ export interface CreateIssueParams {
   state?: string;
   assignee?: string;
   customFields?: Record<string, any>;
+  tags?: string[];
 }
 
 export interface CreateEpicParams {
@@ -522,7 +523,17 @@ export class YouTrackClient {
       return projectIdentifier;
     }
 
-    // Try to get projects list to find the correct ID
+    // Try to validate the project to get the correct ID
+    try {
+      const validation = await this.validateProject(projectIdentifier);
+      if (validation.exists && validation.project) {
+        return validation.project.id;
+      }
+    } catch (error) {
+      logger.warn(`Failed to validate project ${projectIdentifier}:`, (error as Error).message);
+    }
+
+    // Try to get projects list to find the correct ID as fallback
     try {
       const projects = await this.listProjects();
       const project = projects.find(p => 
@@ -562,40 +573,71 @@ export class YouTrackClient {
         Object.assign(fieldMappings, params.customFields);
       }
 
-      // Get custom fields for the project first
-      await this.customFieldsManager.getProjectCustomFields(projectId);
-
-      // Convert to proper custom fields format
-      const customFields = this.customFieldsManager.convertToCustomFields(projectId, fieldMappings);
-
-      // Validate custom fields
-      const validation = await this.customFieldsManager.validateCustomFields(projectId, customFields);
-      if (!validation.valid) {
-        throw new Error(`Custom field validation failed: ${validation.errors.join(', ')}`);
-      }
-
       // Create issue with proper structure
       const issueData: any = {
         project: { id: projectId },
-        summary: params.summary,
-        customFields: customFields
+        summary: params.summary
       };
 
       if (params.description?.trim()) {
         issueData.description = params.description.trim();
       }
 
-      logger.info('Creating issue with proper custom fields structure', { 
-        projectId, 
-        summary: params.summary,
-        customFieldsCount: customFields.length 
-      });
+      // Only process custom fields if we have any to process
+      if (Object.keys(fieldMappings).length > 0) {
+        try {
+          // Get custom fields for the project first
+          await this.customFieldsManager.getProjectCustomFields(projectId);
+
+          // Convert to proper custom fields format
+          const customFields = this.customFieldsManager.convertToCustomFields(projectId, fieldMappings);
+
+          // Validate custom fields
+          const validation = await this.customFieldsManager.validateCustomFields(projectId, customFields);
+          if (!validation.valid) {
+            throw new Error(`Custom field validation failed: ${validation.errors.join(', ')}`);
+          }
+
+          issueData.customFields = customFields;
+
+          logger.info('Creating issue with proper custom fields structure', { 
+            projectId, 
+            summary: params.summary,
+            customFieldsCount: customFields.length 
+          });
+        } catch (customFieldError) {
+          // Log the error but continue with basic issue creation
+          logError(customFieldError as Error, { message: 'Custom field processing failed, creating basic issue', projectId, fieldMappings });
+          logger.warn('Proceeding with basic issue creation without custom fields');
+        }
+      } else {
+        logger.info('Creating basic issue without custom fields', { 
+          projectId, 
+          summary: params.summary
+        });
+      }
 
       const response = await this.api.post('/issues', issueData, {
         params: {
           fields: 'id,summary,description,project(id,name,shortName),customFields(name,value(name,id))',
         },
       });
+
+      const issueId = response.data.id;
+
+      // Add tags separately if provided (YouTrack requires separate API calls for tags)
+      const tagsAdded: string[] = [];
+      if (params.tags && params.tags.length > 0) {
+        for (const tagName of params.tags) {
+          try {
+            await this.addTagToIssue(issueId, tagName);
+            tagsAdded.push(tagName);
+          } catch (tagError) {
+            // Log error but don't fail the whole operation
+            logError(tagError as Error, { message: 'Failed to add tag to issue', issueId, tagName });
+          }
+        }
+      }
 
       // Clear related cache
       this.cache.clearPattern(`query-.*`);
@@ -607,7 +649,8 @@ export class YouTrackClient {
           text: JSON.stringify({
             success: true,
             issue: response.data,
-            message: `Issue created successfully: ${response.data.id}`
+            message: `Issue created successfully: ${response.data.id}`,
+            tagsAdded: tagsAdded
           }, null, 2),
         }],
       };
@@ -754,11 +797,6 @@ export class YouTrackClient {
         updateData.customFields = customFields;
       }
 
-      // Handle tags separately (not a custom field)
-      if (updates.tags) {
-        updateData.tags = updates.tags.map(tag => ({ name: tag }));
-      }
-
       logger.info('Updating issue with proper custom fields structure', { 
         issueId, 
         projectId,
@@ -770,6 +808,18 @@ export class YouTrackClient {
           fields: 'id,summary,description,customFields(name,value(name,id)),tags(name)',
         },
       });
+
+      // Handle tags separately using the correct two-step process
+      if (updates.tags && updates.tags.length > 0) {
+        for (const tagName of updates.tags) {
+          try {
+            await this.addTagToIssue(issueId, tagName);
+          } catch (tagError) {
+            // Log error but don't fail the whole operation
+            logError(tagError as Error, { message: 'Failed to add tag to issue', issueId, tagName });
+          }
+        }
+      }
 
       // Clear related cache
       this.cache.clearPattern(`query-.*`);
@@ -2584,6 +2634,52 @@ export class YouTrackClient {
 
     } catch (error) {
       throw new Error(`Failed to add tag "${tagName}" to article ${articleId}: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Helper method to add a tag to an issue
+   */
+  private async addTagToIssue(issueId: string, tagName: string): Promise<void> {
+    try {
+      // First, try to find if the tag already exists
+      const existingTagsResponse = await this.api.get('/tags', {
+        params: {
+          query: tagName,
+          fields: 'id,name'
+        }
+      });
+
+      let tagId: string;
+      
+      if (existingTagsResponse.data && existingTagsResponse.data.length > 0) {
+        // Tag exists, use it
+        const existingTag = existingTagsResponse.data.find((tag: any) => tag.name === tagName);
+        if (existingTag) {
+          tagId = existingTag.id;
+        } else {
+          // Create new tag
+          const newTagResponse = await this.api.post('/tags', {
+            name: tagName
+          });
+          tagId = newTagResponse.data.id;
+        }
+      } else {
+        // Create new tag
+        const newTagResponse = await this.api.post('/tags', {
+          name: tagName
+        });
+        tagId = newTagResponse.data.id;
+      }
+
+      // Add the tag to the issue using the correct endpoint
+      await this.api.post(`/issues/${issueId}/tags`, {
+        id: tagId,
+        name: tagName
+      });
+
+    } catch (error) {
+      throw new Error(`Failed to add tag "${tagName}" to issue ${issueId}: ${(error as Error).message}`);
     }
   }
 
