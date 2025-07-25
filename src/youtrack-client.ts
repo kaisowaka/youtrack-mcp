@@ -2421,23 +2421,45 @@ export class YouTrackClient {
 
       const queryParams: any = { fields: fieldsParam };
       
-      // Build search query
-      if (params.projectId || params.query) {
+      // For articles API, we may need different approach for project filtering
+      if (params.projectId) {
+        // First validate that the project exists
+        const projectValidation = await this.validateProject(params.projectId);
+        if (!projectValidation.exists) {
+          throw new Error(`Project '${params.projectId}' not found. Please check the project ID or use a valid project.`);
+        }
+        
+        // Try different query formats for articles API
         let searchQuery = '';
-        if (params.projectId) {
-          searchQuery += `project: ${params.projectId}`;
-        }
         if (params.query) {
-          if (searchQuery) searchQuery += ' ';
-          searchQuery += params.query;
+          searchQuery = params.query;
         }
-        queryParams.query = searchQuery;
+        
+        // If we have a project filter, we might need to filter results after retrieval
+        // since articles API may not support project queries the same way as issues API
+        if (searchQuery) {
+          queryParams.query = searchQuery;
+        }
+      } else if (params.query) {
+        queryParams.query = params.query;
       }
 
       logApiCall('GET', '/articles', queryParams);
       const response = await this.api.get('/articles', { params: queryParams });
 
-      const articles = response.data || [];
+      let articles = response.data || [];
+      
+      // Filter by project after retrieval if needed
+      if (params.projectId && articles.length > 0) {
+        const projectValidation = await this.validateProject(params.projectId);
+        if (projectValidation.exists && projectValidation.project) {
+          articles = articles.filter((article: any) => 
+            article.project?.id === projectValidation.project.id ||
+            article.project?.shortName === params.projectId ||
+            article.project?.name === params.projectId
+          );
+        }
+      }
       
       // Process articles for better presentation
       const processedArticles = articles.map((article: any) => ({
