@@ -553,10 +553,10 @@ export class YouTrackClient {
   }
 
   async createIssue(params: CreateIssueParams): Promise<MCPResponse> {
+    // VALIDATION: Check for common duplication patterns
+    const warnings: string[] = [];
+    
     try {
-      // VALIDATION: Check for common duplication patterns
-      const warnings: string[] = [];
-      
       // Check if summary is duplicated in description
       if (params.description && params.description.toLowerCase().includes(params.summary.toLowerCase())) {
         warnings.push(`⚠️  WARNING: Summary "${params.summary}" appears to be duplicated in description. YouTrack displays them separately.`);
@@ -580,6 +580,16 @@ export class YouTrackClient {
         if (summaryAsHeader.test(params.description)) {
           warnings.push(`⚠️  WARNING: Summary appears as markdown header in description. Remove it to avoid duplication.`);
         }
+      }
+
+      // Check for overly long content that might cause API issues
+      if (params.description && params.description.length > 32768) {
+        warnings.push(`⚠️  WARNING: Description is very long (${params.description.length} chars). Consider splitting into multiple issues or using attachments.`);
+      }
+
+      // Check for potential encoding issues
+      if (params.summary.includes('\ufffd') || (params.description && params.description.includes('\ufffd'))) {
+        warnings.push(`⚠️  WARNING: Text contains replacement characters - check for encoding issues.`);
       }
 
       logApiCall('POST', '/issues', params);
@@ -688,6 +698,7 @@ export class YouTrackClient {
       logError(error as Error, { 
         method: 'createIssue', 
         params,
+        warnings,
         errorDetails: error instanceof AxiosError ? {
           status: error.response?.status,
           statusText: error.response?.statusText,
@@ -695,7 +706,19 @@ export class YouTrackClient {
         } : undefined
       });
       
-      // Don't mask errors - let them bubble up to MCP properly
+      // Provide specific guidance based on error type
+      if (error instanceof AxiosError) {
+        if (error.response?.status === 400) {
+          // Bad request - likely content or formatting issue
+          throw new Error(`YouTrack API Error (400): Invalid request data. ${warnings.length > 0 ? 'Check content duplication warnings above.' : 'Verify summary, description, and field values.'} Details: ${error.response?.data?.error_description || error.message}`);
+        } else if (error.response?.status === 404) {
+          throw new Error(`YouTrack API Error (404): Project not found. Verify project ID '${params.projectId}' exists and you have access.`);
+        } else if (error.response?.status === 403) {
+          throw new Error(`YouTrack API Error (403): Permission denied. Check your YouTrack token permissions for project '${params.projectId}'.`);
+        }
+      }
+      
+      // Re-throw with original error for other cases
       throw error;
     }
   }
@@ -877,16 +900,19 @@ export class YouTrackClient {
         } : undefined
       });
       
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify({
-            success: false,
-            error: getErrorMessage(error),
-            details: error instanceof AxiosError ? error.response?.data : null
-          }, null, 2),
-        }],
-      };
+      // Provide specific guidance based on error type
+      if (error instanceof AxiosError) {
+        if (error.response?.status === 404) {
+          throw new Error(`YouTrack API Error (404): Issue '${issueId}' not found. Verify the issue ID exists and you have access to it.`);
+        } else if (error.response?.status === 403) {
+          throw new Error(`YouTrack API Error (403): Permission denied. Check your YouTrack token permissions for issue '${issueId}'.`);
+        } else if (error.response?.status === 400) {
+          throw new Error(`YouTrack API Error (400): Invalid update data. Verify field values and custom field names. Details: ${error.response?.data?.error_description || error.message}`);
+        }
+      }
+      
+      // Re-throw with enhanced error message
+      throw new Error(`Failed to update issue ${issueId}: ${getErrorMessage(error)}`);
     }
   }
 
@@ -3286,7 +3312,7 @@ export class YouTrackClient {
 
   /**
    * Create issue dependency
-   * Note: YouTrack API has limited support for programmatic link creation
+   * Note: YouTrack API has specific requirements for issue link creation
    */
   async createIssueDependency(params: {
     sourceIssueId: string;
@@ -3294,76 +3320,78 @@ export class YouTrackClient {
     linkType?: string;
   }): Promise<MCPResponse> {
     try {
-      // YouTrack uses PUT method for issue links
+      // First validate that both issues exist
+      await Promise.all([
+        this.validateIssueExists(params.sourceIssueId),
+        this.validateIssueExists(params.targetIssueId)
+      ]);
+
+      // YouTrack API approach: Add link to source issue
       const linkData = {
-        linkType: { name: params.linkType || 'Depends' },
-        issues: [{ id: params.targetIssueId }]
+        linkType: params.linkType || 'Depends',
+        issues: [params.targetIssueId]
       };
 
-      logApiCall('PUT', `/issues/${params.sourceIssueId}/links`, linkData);
+      logApiCall('POST', `/issues/${params.sourceIssueId}/links`, linkData);
       
-      // Try different approaches for creating links
-      let response;
+      // Try standard approach first
       try {
-        response = await this.api.put(`/issues/${params.sourceIssueId}/links`, linkData);
-      } catch (putError) {
-        // Try POST method as fallback
-        try {
-          response = await this.api.post(`/issues/${params.sourceIssueId}/links`, linkData);
-        } catch (postError) {
-          // Return informative message about API limitation
-          return {
-            content: [{
-              type: 'text',
-              text: JSON.stringify({
-                success: false,
-                limitation: true,
-                message: 'YouTrack API does not support programmatic link creation via REST API',
-                recommendation: 'Use YouTrack web interface to create issue dependencies manually',
-                dependency: {
-                  sourceIssue: params.sourceIssueId,
-                  targetIssue: params.targetIssueId,
-                  linkType: params.linkType || 'Depends'
-                },
-                alternatives: [
-                  'Use YouTrack web interface',
-                  'Use YouTrack command line tool',
-                  'Set up dependencies during issue creation'
-                ]
-              }, null, 2)
-            }]
-          };
-        }
+        const response = await this.api.post(`/issues/${params.sourceIssueId}/links`, linkData);
+        
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              success: true,
+              dependency: {
+                sourceIssue: params.sourceIssueId,
+                targetIssue: params.targetIssueId,
+                linkType: params.linkType || 'Depends',
+                message: `Created dependency: ${params.sourceIssueId} depends on ${params.targetIssueId}`
+              },
+              response: response.data
+            }, null, 2)
+          }]
+        };
+      } catch (apiError) {
+        // Enhanced error handling with specific guidance
+        const errorMsg = (apiError as any)?.response?.data?.error_description || 
+                        (apiError as any)?.message || 'Unknown error';
+        
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              success: false,
+              error: 'YouTrack API limitation',
+              message: `Failed to create dependency programmatically: ${errorMsg}`,
+              recommendation: 'Use YouTrack web interface to create issue dependencies',
+              manual_steps: [
+                `1. Open issue ${params.sourceIssueId} in YouTrack web interface`,
+                `2. Click "Links" or "Dependencies" section`,
+                `3. Add dependency to issue ${params.targetIssueId}`,
+                `4. Select link type: ${params.linkType || 'Depends'}`
+              ],
+              dependency_info: {
+                sourceIssue: params.sourceIssueId,
+                targetIssue: params.targetIssueId,
+                linkType: params.linkType || 'Depends'
+              },
+              note: 'YouTrack REST API has limited support for creating issue links programmatically'
+            }, null, 2)
+          }]
+        };
       }
-
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify({
-            success: true,
-            dependency: {
-              sourceIssue: params.sourceIssueId,
-              targetIssue: params.targetIssueId,
-              linkType: params.linkType || 'Depends',
-              message: `Created dependency: ${params.sourceIssueId} depends on ${params.targetIssueId}`
-            }
-          }, null, 2)
-        }]
-      };
     } catch (error) {
       logError(error as Error, params);
-      
-      // Return informative error for API limitations
       return {
         content: [{
           type: 'text',
           text: JSON.stringify({
             success: false,
-            limitation: true,
-            message: 'YouTrack API limitation: Cannot create issue dependencies programmatically',
-            error: (error as Error).message,
-            recommendation: 'Use YouTrack web interface to create dependencies manually',
-            dependency: {
+            error: 'Validation or API error',
+            message: `Failed to create dependency: ${(error as Error).message}`,
+            dependency_info: {
               sourceIssue: params.sourceIssueId,
               targetIssue: params.targetIssueId,
               linkType: params.linkType || 'Depends'
@@ -3371,6 +3399,20 @@ export class YouTrackClient {
           }, null, 2)
         }]
       };
+    }
+  }
+
+  /**
+   * Helper method to validate that an issue exists
+   */
+  private async validateIssueExists(issueId: string): Promise<boolean> {
+    try {
+      await this.api.get(`/issues/${issueId}`, {
+        params: { fields: 'id' }
+      });
+      return true;
+    } catch (error) {
+      throw new Error(`Issue ${issueId} not found or not accessible`);
     }
   }
 

@@ -6,6 +6,8 @@ An MCP (Model Context Protocol) server that provides YouTrack REST API access to
 
 **Before using this MCP server**, please read the [Content Duplication Guide](./CONTENT_DUPLICATION_GUIDE.md) to avoid common mistakes when creating issues and articles. The server includes automatic validation to warn about title/content duplication that causes display issues in YouTrack.
 
+**If you encounter API errors**, check the [Error Handling Guide](./ERROR_HANDLING_GUIDE.md) for solutions to common 404, 400, and 405 errors.
+
 ## Features
 
 - 🔍 **Query and Search Issues**: Use YouTrack's powerful query syntax to find issues
