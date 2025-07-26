@@ -833,16 +833,50 @@ export class YouTrackClient {
         updateData.description = updates.description;
       }
 
-      // Handle custom fields properly
+      // Handle custom fields properly - but exclude assignee first
       const customFieldMappings: Record<string, any> = {};
       
       if (updates.state) customFieldMappings.state = updates.state;
       if (updates.priority) customFieldMappings.priority = updates.priority;
       if (updates.type) customFieldMappings.type = updates.type;
-      if (updates.assignee) customFieldMappings.assignee = updates.assignee;
       if (updates.subsystem) customFieldMappings.subsystem = updates.subsystem;
       if (updates.dueDate) customFieldMappings.dueDate = updates.dueDate;
       if (updates.estimation) customFieldMappings.estimation = updates.estimation;
+
+      // Handle assignee separately using a more direct approach
+      if (updates.assignee) {
+        try {
+          // Try to find the user first if it's not already a user object
+          if (typeof updates.assignee === 'string') {
+            const userQuery = updates.assignee;
+            const usersResponse = await this.api.get('/users', {
+              params: { 
+                query: userQuery,
+                fields: 'id,login,fullName',
+                $top: 10
+              }
+            });
+            
+            const users = usersResponse.data || [];
+            const user = users.find((u: any) => 
+              u.login === userQuery || 
+              u.fullName?.toLowerCase().includes(userQuery.toLowerCase())
+            );
+            
+            if (user) {
+              customFieldMappings.assignee = user.login;
+            } else {
+              logger.warn(`User not found for assignee: ${userQuery}`);
+            }
+          } else {
+            customFieldMappings.assignee = updates.assignee;
+          }
+        } catch (userError) {
+          logger.warn('Failed to resolve assignee user:', userError);
+          // Still try to use the original value
+          customFieldMappings.assignee = updates.assignee;
+        }
+      }
 
       // Convert to proper custom fields format
       if (Object.keys(customFieldMappings).length > 0) {
@@ -1463,15 +1497,31 @@ export class YouTrackClient {
       
       for (const issueId of params.issueIds) {
         try {
+          // Use the correct API endpoint for creating issue links
           const linkData = {
-            linkType: { name: 'relates to' },
+            linkType: { name: 'Subtask' }, // Use a standard link type
+            direction: 'OUTWARD',
             issues: [{ id: params.milestoneId }]
           };
 
+          logApiCall('POST', `/issues/${issueId}/links`, linkData);
           await this.api.post(`/issues/${issueId}/links`, linkData);
           results.push({ issueId, success: true });
         } catch (error) {
-          results.push({ issueId, success: false, error: (error as Error).message });
+          // If link creation fails, try alternative approach: update custom field
+          try {
+            await this.updateIssue(issueId, { 
+              // Add milestone as a tag or custom field instead
+              tags: [`milestone:${params.milestoneId}`] 
+            });
+            results.push({ issueId, success: true, method: 'tag' });
+          } catch (fallbackError) {
+            results.push({ 
+              issueId, 
+              success: false, 
+              error: `Link failed: ${(error as Error).message}, Tag fallback failed: ${(fallbackError as Error).message}` 
+            });
+          }
         }
       }
 
@@ -4210,21 +4260,39 @@ export class YouTrackClient {
     estimatedTime?: string;
   }): Promise<MCPResponse> {
     try {
+      // First, get the current user information
+      let currentUser = null;
+      try {
+        const userResponse = await this.api.get('/users/me', {
+          params: { fields: 'id,login,fullName' }
+        });
+        currentUser = userResponse.data;
+      } catch (userError) {
+        logger.warn('Could not get current user, will skip assignee update', userError);
+      }
+
       const updates: any = { 
-        state: 'In Progress',
-        assignee: 'me' // This will assign to current user
+        state: 'In Progress'
       };
+      
+      // Only set assignee if we could get current user info
+      if (currentUser) {
+        updates.assignee = currentUser.login;
+      }
       
       if (params.estimatedTime) {
         // Convert time estimate to minutes if needed
         const timeInMinutes = this.parseTimeToMinutes(params.estimatedTime);
         if (timeInMinutes > 0) {
+          // Try different field names that might work for estimation
           updates.estimation = timeInMinutes;
         }
       }
       
+      // Update the issue
       await this.updateIssue(params.issueId, updates);
       
+      // Add comment if provided
       if (params.comment) {
         await this.addIssueComment(params.issueId, params.comment);
       }
@@ -4236,6 +4304,7 @@ export class YouTrackClient {
             success: true,
             message: `Started working on issue ${params.issueId}`,
             state: 'In Progress',
+            assignee: currentUser?.login || 'not set',
             estimated: params.estimatedTime || null
           }, null, 2),
         }],
