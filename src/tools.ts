@@ -164,6 +164,121 @@ export const toolDefinitions = [
       required: ['issueId', 'updates'],
     },
   },
+  
+  // ===========================
+  // CRITICAL: STATE MANAGEMENT TOOLS
+  // ===========================
+  {
+    name: 'change_issue_state',
+    description: 'Change the state of an issue with automatic workflow validation. CRITICAL for completing work - use this when issues are done!',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        issueId: {
+          type: 'string',
+          description: 'The issue ID to change state for',
+        },
+        newState: {
+          type: 'string',
+          description: 'New state (e.g., "In Progress", "Done", "Resolved", "Closed", "Testing")',
+        },
+        comment: {
+          type: 'string',
+          description: 'Optional comment explaining the state change (recommended for completion)',
+        },
+        resolution: {
+          type: 'string',
+          description: 'Resolution reason when closing/resolving (e.g., "Fixed", "Won\'t fix", "Duplicate")',
+        },
+      },
+      required: ['issueId', 'newState'],
+    },
+  },
+  {
+    name: 'complete_issue',
+    description: 'Mark an issue as completed with automatic state transition and completion comment. Use this when work is finished!',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        issueId: {
+          type: 'string',
+          description: 'The issue ID to mark as completed',
+        },
+        completionComment: {
+          type: 'string',
+          description: 'Comment describing what was completed and how (recommended)',
+        },
+        resolution: {
+          type: 'string',
+          description: 'How the issue was resolved (e.g., "Fixed", "Implemented", "Delivered")',
+          default: 'Fixed',
+        },
+        logTime: {
+          type: 'string',
+          description: 'Time spent on completion (e.g., "2h", "1d", "30m") - optional',
+        },
+      },
+      required: ['issueId'],
+    },
+  },
+  {
+    name: 'get_issue_workflow_states',
+    description: 'Get all available states for an issue and valid transitions. Use this to see what states are available before changing.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        issueId: {
+          type: 'string',
+          description: 'The issue ID to get available states for',
+        },
+        projectId: {
+          type: 'string',
+          description: 'Project ID (optional - will be determined from issue if not provided)',
+        },
+      },
+      required: ['issueId'],
+    },
+  },
+  {
+    name: 'start_working_on_issue',
+    description: 'Mark that you are starting work on an issue - changes state to "In Progress" and assigns to you',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        issueId: {
+          type: 'string',
+          description: 'The issue ID to start working on',
+        },
+        comment: {
+          type: 'string',
+          description: 'Optional comment about starting work (e.g., "Starting implementation of login feature")',
+        },
+        estimatedTime: {
+          type: 'string',
+          description: 'Estimated time to complete (e.g., "4h", "2d", "1w") - optional',
+        },
+      },
+      required: ['issueId'],
+    },
+  },
+  {
+    name: 'get_my_active_issues',
+    description: 'Get all issues currently assigned to you that are in progress or need attention',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'Filter by specific project (optional)',
+        },
+        includeDetails: {
+          type: 'boolean',
+          description: 'Include detailed issue information',
+          default: true,
+        },
+      },
+    },
+  },
   {
     name: 'get_project_issues_summary',
     description: 'Get a summary of issues in a project grouped by state',

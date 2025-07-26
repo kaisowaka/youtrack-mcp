@@ -171,6 +171,49 @@ class YouTrackMCPServer {
             );
             break;
 
+          // ========================
+          // STATE MANAGEMENT TOOLS
+          // ========================
+          case 'change_issue_state':
+            result = await this.youtrackClient.changeIssueState({
+              issueId: args.issueId as string,
+              newState: args.newState as string,
+              comment: args.comment as string,
+              resolution: args.resolution as string,
+            });
+            break;
+
+          case 'complete_issue':
+            result = await this.youtrackClient.completeIssue({
+              issueId: args.issueId as string,
+              completionComment: args.completionComment as string,
+              resolution: args.resolution as string,
+              logTime: args.logTime as string,
+            });
+            break;
+
+          case 'get_issue_workflow_states':
+            result = await this.youtrackClient.getIssueWorkflowStates({
+              issueId: args.issueId as string,
+              projectId: args.projectId as string,
+            });
+            break;
+
+          case 'start_working_on_issue':
+            result = await this.youtrackClient.startWorkingOnIssue({
+              issueId: args.issueId as string,
+              comment: args.comment as string,
+              estimatedTime: args.estimatedTime as string,
+            });
+            break;
+
+          case 'get_my_active_issues':
+            result = await this.youtrackClient.getMyActiveIssues({
+              projectId: args.projectId as string,
+              includeDetails: args.includeDetails as boolean,
+            });
+            break;
+
           case 'get_project_issues_summary':
             result = await this.youtrackClient.getProjectIssuesSummary(
               args.projectId as string

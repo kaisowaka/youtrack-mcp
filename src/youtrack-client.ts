@@ -4058,4 +4058,251 @@ export class YouTrackClient {
       throw new Error(`Failed to route multiple dependencies: ${getErrorMessage(error)}`);
     }
   }
+
+  // ===========================
+  // STATE MANAGEMENT METHODS
+  // ===========================
+
+  /**
+   * Change the state of an issue with workflow validation
+   */
+  async changeIssueState(params: {
+    issueId: string;
+    newState: string;
+    comment?: string;
+    resolution?: string;
+  }): Promise<MCPResponse> {
+    try {
+      logApiCall('POST', `/issues/${params.issueId}`, { state: params.newState });
+
+      const updates: any = { state: params.newState };
+      
+      if (params.resolution) {
+        updates.resolution = params.resolution;
+      }
+      
+      // Update the issue state
+      const response = await this.updateIssue(params.issueId, updates);
+      
+      // Add a comment if provided
+      if (params.comment) {
+        await this.addIssueComment(params.issueId, params.comment);
+      }
+      
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            message: `Issue ${params.issueId} state changed to "${params.newState}"${params.comment ? ' with comment' : ''}`,
+            newState: params.newState,
+            issueId: params.issueId,
+            resolution: params.resolution
+          }, null, 2),
+        }],
+      };
+    } catch (error) {
+      logError(error as Error, { method: 'changeIssueState', params });
+      throw new Error(`Failed to change issue state: ${getErrorMessage(error)}`);
+    }
+  }
+
+  /**
+   * Mark an issue as completed with automatic workflow
+   */
+  async completeIssue(params: {
+    issueId: string;
+    completionComment?: string;
+    resolution?: string;
+    logTime?: string;
+  }): Promise<MCPResponse> {
+    try {
+      const resolution = params.resolution || 'Fixed';
+      
+      // First, mark as completed
+      await this.changeIssueState({
+        issueId: params.issueId,
+        newState: 'Done',
+        comment: params.completionComment || `Issue completed with resolution: ${resolution}`,
+        resolution
+      });
+      
+      // Log time if provided
+      if (params.logTime) {
+        await this.logWorkTime({
+          issueId: params.issueId,
+          duration: params.logTime,
+          description: 'Completion work',
+          date: new Date().toISOString().split('T')[0]
+        });
+      }
+      
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            message: `Issue ${params.issueId} marked as completed`,
+            state: 'Done',
+            resolution,
+            timeLogged: params.logTime || null
+          }, null, 2),
+        }],
+      };
+    } catch (error) {
+      logError(error as Error, { method: 'completeIssue', params });
+      throw new Error(`Failed to complete issue: ${getErrorMessage(error)}`);
+    }
+  }
+
+  /**
+   * Get available workflow states for an issue
+   */
+  async getIssueWorkflowStates(params: {
+    issueId: string;
+    projectId?: string;
+  }): Promise<MCPResponse> {
+    try {
+      // Get issue details first if no project provided
+      let project = params.projectId;
+      if (!project) {
+        const issue = await this.api.get(`/issues/${params.issueId}`, {
+          params: { fields: 'project(id,shortName)' }
+        });
+        project = issue.data.project.shortName;
+      }
+      
+      // Get available states for the project
+      const statesResponse = await this.api.get(`/admin/projects/${project}/customFields/State`, {
+        params: { fields: 'bundle(values(name,description))' }
+      });
+      
+      const currentIssue = await this.api.get(`/issues/${params.issueId}`, {
+        params: { fields: 'state(name)' }
+      });
+      
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            currentState: currentIssue.data.state?.name || 'Unknown',
+            availableStates: statesResponse.data.bundle?.values?.map((v: any) => ({
+              name: v.name,
+              description: v.description || ''
+            })) || [],
+            issueId: params.issueId,
+            projectId: project
+          }, null, 2),
+        }],
+      };
+    } catch (error) {
+      logError(error as Error, { method: 'getIssueWorkflowStates', params });
+      throw new Error(`Failed to get workflow states: ${getErrorMessage(error)}`);
+    }
+  }
+
+  /**
+   * Start working on an issue
+   */
+  async startWorkingOnIssue(params: {
+    issueId: string;
+    comment?: string;
+    estimatedTime?: string;
+  }): Promise<MCPResponse> {
+    try {
+      const updates: any = { 
+        state: 'In Progress',
+        assignee: 'me' // This will assign to current user
+      };
+      
+      if (params.estimatedTime) {
+        // Convert time estimate to minutes if needed
+        const timeInMinutes = this.parseTimeToMinutes(params.estimatedTime);
+        if (timeInMinutes > 0) {
+          updates.estimation = timeInMinutes;
+        }
+      }
+      
+      await this.updateIssue(params.issueId, updates);
+      
+      if (params.comment) {
+        await this.addIssueComment(params.issueId, params.comment);
+      }
+      
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            message: `Started working on issue ${params.issueId}`,
+            state: 'In Progress',
+            estimated: params.estimatedTime || null
+          }, null, 2),
+        }],
+      };
+    } catch (error) {
+      logError(error as Error, { method: 'startWorkingOnIssue', params });
+      throw new Error(`Failed to start working on issue: ${getErrorMessage(error)}`);
+    }
+  }
+
+  /**
+   * Get all active issues for current user
+   */
+  async getMyActiveIssues(params: {
+    projectId?: string;
+    includeDetails?: boolean;
+  }): Promise<MCPResponse> {
+    try {
+      let query = 'assignee: me state: {In Progress} OR state: {Open}';
+      if (params.projectId) {
+        query = `project: ${params.projectId} ${query}`;
+      }
+      
+      const fields = params.includeDetails 
+        ? 'id,summary,description,state(name),priority(name),type(name),project(shortName),created,updated,assignee(login,fullName)'
+        : 'id,summary,state(name),priority(name),project(shortName)';
+      
+      const response = await this.api.get('/issues', {
+        params: {
+          query,
+          fields
+        }
+      });
+      
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            issues: response.data || [],
+            count: response.data?.length || 0,
+            query
+          }, null, 2),
+        }],
+      };
+    } catch (error) {
+      logError(error as Error, { method: 'getMyActiveIssues', params });
+      throw new Error(`Failed to get active issues: ${getErrorMessage(error)}`);
+    }
+  }
+
+  /**
+   * Parse time strings to minutes
+   */
+  private parseTimeToMinutes(timeStr: string): number {
+    // Parse time strings like "2h", "1d", "30m", "1w" to minutes
+    const match = timeStr.match(/^(\d+(?:\.\d+)?)\s*([hdwm])$/i);
+    if (!match) return 0;
+    
+    const value = parseFloat(match[1]);
+    const unit = match[2].toLowerCase();
+    
+    switch (unit) {
+      case 'm': return value;
+      case 'h': return value * 60;
+      case 'd': return value * 8 * 60; // 8-hour workday
+      case 'w': return value * 5 * 8 * 60; // 5-day work week
+      default: return 0;
+    }
+  }
 }
