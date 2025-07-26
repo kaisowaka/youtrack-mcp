@@ -1,0 +1,284 @@
+name: Nightly Tests
+
+on:
+  schedule:
+    # Run every night at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      extended_tests:
+        description: 'Run extended test suite'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  nightly-validation:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x, 22.x]
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run comprehensive tests
+      run: |
+        echo "🌙 Running nightly validation on ${{ matrix.os }} with Node.js ${{ matrix.node-version }}"
+        
+        # Build
+        npm run build
+        
+        # Type checking
+        npx tsc --noEmit --strict
+        
+        # Tests if available
+        npm test --if-present
+        
+        # Extended validation
+        echo "🔍 Extended validation checks..."
+        
+        # Check all tools are properly defined
+        node -e "
+          const fs = require('fs');
+          const toolsContent = fs.readFileSync('src/tools.ts', 'utf8');
+          const tools = toolsContent.match(/name:\s*['\"]\w+['\"]/g) || [];
+          console.log(\`✅ Found \${tools.length} tools defined\`);
+          
+          // Check for state management tools
+          const stateTools = ['complete_issue', 'start_working_on_issue', 'change_issue_state'];
+          const missingTools = stateTools.filter(tool => !toolsContent.includes(tool));
+          if (missingTools.length === 0) {
+            console.log('✅ All state management tools present');
+          } else {
+            console.log(\`❌ Missing tools: \${missingTools.join(', ')}\`);
+            process.exit(1);
+          }
+        "
+        
+    - name: Extended API validation
+      if: github.event.inputs.extended_tests == 'true' || github.event_name == 'schedule'
+      run: |
+        echo "🔧 Running extended API validation..."
+        
+        # Create comprehensive API test
+        cat > extended-api-test.js << 'EOF'
+        const fs = require('fs');
+        
+        console.log('🔍 Extended API validation...');
+        
+        // Load and validate client code
+        const clientCode = fs.readFileSync('src/youtrack-client.ts', 'utf8');
+        
+        // Check for all required API methods
+        const requiredMethods = [
+          'createIssue',
+          'updateIssue', 
+          'queryIssues',
+          'createArticle',
+          'updateArticle',
+          'listArticles',
+          'completeIssue',
+          'startWorkingOnIssue',
+          'changeIssueState'
+        ];
+        
+        const missingMethods = requiredMethods.filter(method => !clientCode.includes(method));
+        
+        if (missingMethods.length === 0) {
+          console.log('✅ All required API methods found');
+        } else {
+          console.log(`❌ Missing API methods: ${missingMethods.join(', ')}`);
+          process.exit(1);
+        }
+        
+        // Check error handling patterns
+        const errorPatterns = [
+          'try {',
+          'catch (',
+          'throw new Error',
+          'getErrorMessage'
+        ];
+        
+        const foundPatterns = errorPatterns.filter(pattern => clientCode.includes(pattern));
+        
+        if (foundPatterns.length >= 3) {
+          console.log('✅ Error handling patterns found');
+        } else {
+          console.log('⚠️ Limited error handling detected');
+        }
+        
+        console.log('🎉 Extended API validation completed');
+        EOF
+        
+        node extended-api-test.js
+        
+    - name: Memory and performance check
+      run: |
+        echo "📊 Memory and performance validation..."
+        
+        # Check memory usage during build
+        echo "Memory usage during build:"
+        time npm run build
+        
+        # Check final build size
+        if [ -d "dist" ]; then
+          echo "Final build size:"
+          du -sh dist
+          
+          # Check for memory leaks in build output
+          if grep -r "setInterval\|setTimeout" dist/ | grep -v "clearInterval\|clearTimeout"; then
+            echo "⚠️ Potential memory leaks detected (unclosed timers)"
+          else
+            echo "✅ No obvious memory leaks detected"
+          fi
+        fi
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20.x
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Comprehensive dependency audit
+      run: |
+        echo "🔒 Comprehensive dependency audit..."
+        
+        # Full security audit
+        npm audit --audit-level low > audit-report.txt || true
+        
+        if [ -s audit-report.txt ]; then
+          echo "📋 Security audit report:"
+          cat audit-report.txt
+        else
+          echo "✅ No security vulnerabilities found"
+        fi
+        
+        # Check for outdated dependencies
+        echo "📦 Checking for outdated dependencies..."
+        npm outdated > outdated-deps.txt || true
+        
+        if [ -s outdated-deps.txt ]; then
+          echo "📋 Outdated dependencies:"
+          cat outdated-deps.txt
+        else
+          echo "✅ All dependencies are up to date"
+        fi
+        
+        # Check bundle size impact
+        echo "📊 Dependency analysis..."
+        npm ls --depth=0 > deps-tree.txt
+        
+        echo "Top-level dependencies:"
+        cat deps-tree.txt
+
+  documentation-health:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Documentation health check
+      run: |
+        echo "📚 Documentation health check..."
+        
+        # Check all documentation files exist
+        required_docs=(
+          "README.md"
+          "WORKFLOW_STATE_MANAGEMENT.md"
+        )
+        
+        for doc in "${required_docs[@]}"; do
+          if [ -f "$doc" ]; then
+            lines=$(wc -l < "$doc")
+            echo "✅ $doc exists ($lines lines)"
+            
+            # Check for broken internal links
+            if grep -q "](.*\.md)" "$doc"; then
+              echo "  📋 Internal links found, checking..."
+              # Extract markdown links
+              grep -o "](.*\.md)" "$doc" | sed 's/](//' | while read link; do
+                if [ ! -f "$link" ]; then
+                  echo "  ❌ Broken link: $link"
+                else
+                  echo "  ✅ Link OK: $link"
+                fi
+              done
+            fi
+          else
+            echo "❌ Missing documentation: $doc"
+          fi
+        done
+        
+        # Check for code examples in documentation
+        echo "🔍 Checking for code examples..."
+        code_blocks=$(grep -c "```" README.md || echo 0)
+        if [ "$code_blocks" -gt 0 ]; then
+          echo "✅ Found $code_blocks code blocks in README"
+        else
+          echo "⚠️ No code examples found in README"
+        fi
+
+  notification:
+    runs-on: ubuntu-latest
+    needs: [nightly-validation, dependency-audit, documentation-health]
+    if: always()
+    
+    steps:
+    - name: Nightly test summary
+      run: |
+        echo "🌙 Nightly Test Summary"
+        echo "======================"
+        echo "Date: $(date -u)"
+        echo "Repository: $GITHUB_REPOSITORY"
+        echo "Commit: $GITHUB_SHA"
+        echo ""
+        
+        # Check job results
+        if [ "${{ needs.nightly-validation.result }}" = "success" ]; then
+          echo "✅ Nightly validation: PASSED"
+        else
+          echo "❌ Nightly validation: FAILED"
+        fi
+        
+        if [ "${{ needs.dependency-audit.result }}" = "success" ]; then
+          echo "✅ Dependency audit: PASSED"
+        else
+          echo "❌ Dependency audit: FAILED"
+        fi
+        
+        if [ "${{ needs.documentation-health.result }}" = "success" ]; then
+          echo "✅ Documentation health: PASSED"
+        else
+          echo "❌ Documentation health: FAILED"
+        fi
+        
+        echo ""
+        if [ "${{ needs.nightly-validation.result }}" = "success" ] && [ "${{ needs.dependency-audit.result }}" = "success" ] && [ "${{ needs.documentation-health.result }}" = "success" ]; then
+          echo "🎉 All nightly tests passed!"
+        else
+          echo "⚠️ Some nightly tests failed - review required"
+        fi

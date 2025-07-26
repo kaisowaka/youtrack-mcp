@@ -1,0 +1,336 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x, 22.x]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run linting
+      run: npm run lint --if-present
+      
+    - name: Run type checking
+      run: npx tsc --noEmit
+      
+    - name: Run tests
+      run: npm test --if-present
+      
+    - name: Build project
+      run: npm run build
+      
+    - name: Validate MCP server structure
+      run: |
+        # Check that build output exists
+        if [ ! -f "dist/index.js" ]; then
+          echo "❌ Build output missing: dist/index.js"
+          exit 1
+        fi
+        echo "✅ Build output found"
+        
+        # Validate that tools are properly exported
+        if ! grep -q "tools" dist/index.js; then
+          echo "❌ Tools not found in build output"
+          exit 1
+        fi
+        echo "✅ Tools found in build output"
+        
+    - name: Test MCP server startup (dry run)
+      run: |
+        # Test that the server can be imported without errors
+        node -e "
+          try {
+            require('./dist/index.js');
+            console.log('✅ MCP server loads successfully');
+          } catch (error) {
+            console.error('❌ MCP server failed to load:', error.message);
+            process.exit(1);
+          }
+        "
+
+  security:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20.x
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run security audit
+      run: npm audit --audit-level high
+      
+    - name: Check for vulnerable dependencies
+      run: |
+        # Run npm audit and capture the result
+        if npm audit --audit-level moderate --json > audit-results.json; then
+          echo "✅ No moderate or high severity vulnerabilities found"
+        else
+          echo "⚠️ Security vulnerabilities detected:"
+          cat audit-results.json
+          # Don't fail the build for now, but report
+        fi
+
+  code-quality:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20.x
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Check code formatting
+      run: |
+        # Check if prettier is configured
+        if [ -f ".prettierrc" ] || [ -f ".prettierrc.json" ] || [ -f "prettier.config.js" ]; then
+          npx prettier --check "src/**/*.{ts,js,json}"
+        else
+          echo "ℹ️ Prettier not configured, skipping format check"
+        fi
+        
+    - name: Check TypeScript compilation
+      run: npx tsc --noEmit --strict
+      
+    - name: Validate project structure
+      run: |
+        echo "📁 Validating project structure..."
+        
+        # Check essential files
+        required_files=(
+          "package.json"
+          "tsconfig.json" 
+          "src/index.ts"
+          "src/tools.ts"
+          "src/youtrack-client.ts"
+          "README.md"
+        )
+        
+        for file in "${required_files[@]}"; do
+          if [ -f "$file" ]; then
+            echo "✅ $file exists"
+          else
+            echo "❌ Missing required file: $file"
+            exit 1
+          fi
+        done
+        
+        # Check that tool count is reasonable (should have many tools)
+        tool_count=$(grep -c "name:" src/tools.ts || echo "0")
+        if [ "$tool_count" -gt 20 ]; then
+          echo "✅ Found $tool_count tools defined"
+        else
+          echo "⚠️ Only $tool_count tools found, expected more"
+        fi
+
+  mcp-validation:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20.x
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build project
+      run: npm run build
+      
+    - name: Validate MCP Protocol Compliance
+      run: |
+        echo "🔍 Validating MCP protocol compliance..."
+        
+        # Check for required MCP server methods
+        required_methods=(
+          "list_tools"
+          "call_tool"
+        )
+        
+        for method in "${required_methods[@]}"; do
+          if grep -q "$method" dist/index.js; then
+            echo "✅ MCP method '$method' implemented"
+          else
+            echo "❌ Missing required MCP method: $method"
+            exit 1
+          fi
+        done
+        
+    - name: Test tool discovery
+      run: |
+        echo "🔧 Testing tool discovery..."
+        
+        # Create a simple test script to check tools can be listed
+        cat > test-tools.js << 'EOF'
+        const fs = require('fs');
+        
+        // Check if tools.ts has proper structure
+        const toolsContent = fs.readFileSync('src/tools.ts', 'utf8');
+        
+        // Look for tool definitions
+        const toolMatches = toolsContent.match(/name:\s*['"]([^'"]+)['"]/g);
+        if (toolMatches && toolMatches.length > 0) {
+          console.log(`✅ Found ${toolMatches.length} tool definitions`);
+          toolMatches.slice(0, 5).forEach(match => {
+            const toolName = match.match(/['"]([^'"]+)['"]/)[1];
+            console.log(`  - ${toolName}`);
+          });
+          if (toolMatches.length > 5) {
+            console.log(`  ... and ${toolMatches.length - 5} more`);
+          }
+        } else {
+          console.error('❌ No tool definitions found');
+          process.exit(1);
+        }
+        
+        // Check for state management tools specifically
+        const stateTools = ['complete_issue', 'start_working_on_issue', 'change_issue_state'];
+        const hasStateTools = stateTools.some(tool => toolsContent.includes(tool));
+        if (hasStateTools) {
+          console.log('✅ State management tools found');
+        } else {
+          console.log('⚠️ State management tools not detected');
+        }
+        EOF
+        
+        node test-tools.js
+
+  documentation:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Validate documentation
+      run: |
+        echo "📚 Validating documentation..."
+        
+        # Check for essential documentation files
+        docs=(
+          "README.md"
+          "WORKFLOW_STATE_MANAGEMENT.md"
+        )
+        
+        for doc in "${docs[@]}"; do
+          if [ -f "$doc" ]; then
+            echo "✅ $doc exists"
+            # Check if file is not empty
+            if [ -s "$doc" ]; then
+              echo "   📄 Content found ($(wc -l < "$doc") lines)"
+            else
+              echo "   ⚠️ File is empty"
+            fi
+          else
+            echo "❌ Missing documentation: $doc"
+            exit 1
+          fi
+        done
+        
+        # Check README has basic sections
+        if grep -q "## " README.md; then
+          echo "✅ README has proper structure with sections"
+        else
+          echo "⚠️ README lacks proper section structure"
+        fi
+        
+        # Check for workflow documentation
+        if grep -q "complete_issue" WORKFLOW_STATE_MANAGEMENT.md; then
+          echo "✅ Workflow documentation includes state management"
+        else
+          echo "⚠️ Workflow documentation may be incomplete"
+        fi
+
+  deploy-check:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    needs: [test, security, code-quality, mcp-validation, documentation]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20.x
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build for production
+      run: npm run build
+      
+    - name: Create deployment artifact
+      run: |
+        echo "📦 Creating deployment artifact..."
+        
+        # Create a deployment-ready package
+        mkdir -p deployment
+        cp -r dist deployment/
+        cp package.json deployment/
+        cp README.md deployment/
+        cp WORKFLOW_STATE_MANAGEMENT.md deployment/
+        
+        # Create deployment info
+        cat > deployment/deployment-info.json << EOF
+        {
+          "buildTime": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+          "gitCommit": "$GITHUB_SHA",
+          "gitBranch": "$GITHUB_REF_NAME",
+          "version": "$(node -p "require('./package.json').version")",
+          "nodeVersion": "$(node --version)",
+          "tools": "$(grep -c 'name:' src/tools.ts || echo 'unknown')"
+        }
+        EOF
+        
+        echo "✅ Deployment artifact created"
+        ls -la deployment/
+        
+    - name: Upload deployment artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: youtrack-mcp-deployment
+        path: deployment/
+        retention-days: 30
