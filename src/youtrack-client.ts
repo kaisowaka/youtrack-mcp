@@ -554,6 +554,34 @@ export class YouTrackClient {
 
   async createIssue(params: CreateIssueParams): Promise<MCPResponse> {
     try {
+      // VALIDATION: Check for common duplication patterns
+      const warnings: string[] = [];
+      
+      // Check if summary is duplicated in description
+      if (params.description && params.description.toLowerCase().includes(params.summary.toLowerCase())) {
+        warnings.push(`⚠️  WARNING: Summary "${params.summary}" appears to be duplicated in description. YouTrack displays them separately.`);
+      }
+      
+      // Check for type/priority prefixes in summary
+      const typePrefixPattern = /^(bug|feature|task|story|epic)[:|\s-]/i;
+      const priorityPrefixPattern = /^(critical|high|normal|low|urgent)[:|\s-]/i;
+      
+      if (typePrefixPattern.test(params.summary)) {
+        warnings.push(`⚠️  WARNING: Summary appears to have type prefix. Use the separate 'type' field instead.`);
+      }
+      
+      if (priorityPrefixPattern.test(params.summary)) {
+        warnings.push(`⚠️  WARNING: Summary appears to have priority prefix. Use the separate 'priority' field instead.`);
+      }
+      
+      // Check for markdown headers that might be duplicating the summary
+      if (params.description) {
+        const summaryAsHeader = new RegExp(`^#+ *${params.summary.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'mi');
+        if (summaryAsHeader.test(params.description)) {
+          warnings.push(`⚠️  WARNING: Summary appears as markdown header in description. Remove it to avoid duplication.`);
+        }
+      }
+
       logApiCall('POST', '/issues', params);
 
       // Resolve project shortName to ID
@@ -650,7 +678,9 @@ export class YouTrackClient {
             success: true,
             issue: response.data,
             message: `Issue created successfully: ${response.data.id}`,
-            tagsAdded: tagsAdded
+            warnings: warnings.length > 0 ? warnings : undefined,
+            tagsAdded: tagsAdded,
+            note: warnings.length > 0 ? "Please review warnings about potential content duplication" : undefined
           }, null, 2),
         }],
       };
@@ -2550,6 +2580,25 @@ export class YouTrackClient {
     tags?: string[];
   }): Promise<MCPResponse> {
     try {
+      // VALIDATION: Check for common duplication patterns
+      const warnings: string[] = [];
+      
+      // Check if title is duplicated in content
+      if (params.content.toLowerCase().includes(params.title.toLowerCase())) {
+        warnings.push(`⚠️  WARNING: Title "${params.title}" appears to be duplicated in content. YouTrack displays title separately.`);
+      }
+      
+      // Check if summary is duplicated in content
+      if (params.summary && params.content.toLowerCase().includes(params.summary.toLowerCase())) {
+        warnings.push(`⚠️  WARNING: Summary appears to be duplicated in content. YouTrack displays summary separately.`);
+      }
+      
+      // Check for markdown headers that might be duplicating the title
+      const titleAsHeader = new RegExp(`^#+ *${params.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'mi');
+      if (titleAsHeader.test(params.content)) {
+        warnings.push(`⚠️  WARNING: Title appears as markdown header in content. Remove it to avoid duplication in YouTrack.`);
+      }
+
       // Get project details to get the actual project ID
       let projectId = params.projectId;
       if (projectId) {
@@ -2602,8 +2651,10 @@ export class YouTrackClient {
             success: true,
             articleId: articleId,
             message: `Article "${params.title}" created successfully`,
+            warnings: warnings.length > 0 ? warnings : undefined,
             article: response.data,
-            tagsAdded: params.tags || []
+            tagsAdded: params.tags || [],
+            note: warnings.length > 0 ? "Please review warnings about potential content duplication" : undefined
           }, null, 2)
         }]
       };

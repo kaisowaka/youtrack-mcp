@@ -2,6 +2,10 @@
 
 An MCP (Model Context Protocol) server that provides YouTrack REST API access to AI agents like GitHub Copilot, enabling real-time project management and issue tracking.
 
+## 🚨 IMPORTANT: Content Duplication Prevention
+
+**Before using this MCP server**, please read the [Content Duplication Guide](./CONTENT_DUPLICATION_GUIDE.md) to avoid common mistakes when creating issues and articles. The server includes automatic validation to warn about title/content duplication that causes display issues in YouTrack.
+
 ## Features
 
 - 🔍 **Query and Search Issues**: Use YouTrack's powerful query syntax to find issues
@@ -35,6 +39,15 @@ cp .env.example .env
 ```bash
 npm run build
 npm start
+```
+
+4. **Validate your content** (optional but recommended):
+```bash
+# Test article content before creating
+npm run validate-content article "API Guide" "REST API guide" "This guide covers..."
+
+# Test issue content before creating  
+npm run validate-content issue "Login fails" "Steps to reproduce: 1. Go to login..."
 ```
 
 ## Configuration
@@ -90,6 +103,25 @@ Update existing issues (state, assignee, priority, etc.).
 Get aggregated statistics of issues by state, priority, and type.
 
 ## Usage Examples
+
+### ✅ Create Issue (Correct Way)
+```javascript
+create_issue({
+  "summary": "Login authentication timeout",  // Clean title only
+  "description": "Steps to reproduce:\n1. Go to login page\n2. Enter credentials\n3. Wait 30 seconds...",  // No title repetition
+  "type": "Bug",      // Use dedicated field
+  "priority": "High"  // Use dedicated field
+})
+```
+
+### ✅ Create Article (Correct Way)  
+```javascript
+create_article({
+  "title": "API Integration Guide",  // Header field
+  "summary": "Complete guide for REST API integration",  // Header field
+  "content": "This document covers:\n\n## Prerequisites\n\n## Setup Steps..."  // Content only, no title repetition
+})
+```
 
 ### Query open bugs
 ```

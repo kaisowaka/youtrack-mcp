@@ -57,7 +57,7 @@ export const toolDefinitions = [
   },
   {
     name: 'create_issue',
-    description: 'Create a new issue in a YouTrack project. Always use separate fields for type, priority, and state - never embed them in the summary/title.',
+    description: 'Create a new issue in a YouTrack project. CRITICAL: Always use separate fields for type, priority, and state - never embed them in the summary/title. YouTrack displays these as separate metadata fields.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -67,19 +67,19 @@ export const toolDefinitions = [
         },
         summary: {
           type: 'string',
-          description: 'Issue summary/title (do not include type, priority, or state prefixes here)',
+          description: 'Issue summary/title (IMPORTANT: do NOT include type, priority, or state prefixes here - use separate fields below)',
         },
         description: {
           type: 'string',
-          description: 'Issue description',
+          description: 'Issue description (do NOT repeat the summary/title here - YouTrack displays them separately)',
         },
         type: {
           type: 'string',
-          description: 'Issue type (Bug, Feature, Task, etc.) - use this field, not the title',
+          description: 'Issue type (Bug, Feature, Task, etc.) - use this field instead of prefixing the title',
         },
         priority: {
           type: 'string',
-          description: 'Issue priority (Critical, High, Normal, Low) - use this field, not the title',
+          description: 'Issue priority (Critical, High, Normal, Low) - use this field instead of prefixing the title',
         },
       },
       required: ['summary'],
@@ -624,21 +624,21 @@ export const toolDefinitions = [
   },
   {
     name: 'create_article',
-    description: 'Create a new knowledge base article',
+    description: 'Create a new knowledge base article. IMPORTANT: Do NOT duplicate the title in the content body - YouTrack displays header fields separately!',
     inputSchema: {
       type: 'object',
       properties: {
         title: {
           type: 'string',
-          description: 'Article title',
+          description: 'Article title (appears in header - do NOT repeat in content)',
         },
         summary: {
           type: 'string',
-          description: 'Brief article summary (optional)',
+          description: 'Brief article summary (optional - appears in header, do NOT repeat in content)',
         },
         content: {
           type: 'string',
-          description: 'Full article content (supports Markdown)',
+          description: 'Full article content (supports Markdown). CRITICAL: Do NOT include the title or summary here as they appear separately in YouTrack UI',
         },
         projectId: {
           type: 'string',
@@ -655,7 +655,7 @@ export const toolDefinitions = [
   },
   {
     name: 'update_article',
-    description: 'Update an existing knowledge base article',
+    description: 'Update an existing knowledge base article. IMPORTANT: Do NOT duplicate header fields in content body',
     inputSchema: {
       type: 'object',
       properties: {
@@ -665,15 +665,15 @@ export const toolDefinitions = [
         },
         title: {
           type: 'string',
-          description: 'New article title (optional)',
+          description: 'New article title (optional - displayed separately from content)',
         },
         summary: {
           type: 'string',
-          description: 'New article summary (optional)',
+          description: 'New article summary (optional - displayed separately from content)',
         },
         content: {
           type: 'string',
-          description: 'New article content (optional)',
+          description: 'New article content (optional). CRITICAL: Do NOT include title or summary here - they appear separately in YouTrack',
         },
         tags: {
           type: 'array',

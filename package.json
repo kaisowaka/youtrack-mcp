@@ -13,6 +13,7 @@
     "test:watch": "jest --watch",
     "test:tags": "tsx scripts/test-article-tags.ts",
     "test:simple": "tsx scripts/simple-check.ts",
+    "validate-content": "tsx scripts/validate-content.ts",
     "setup": "./setup.sh",
     "lint": "eslint src/**/*.ts",
     "format": "prettier --write src/**/*.ts",
