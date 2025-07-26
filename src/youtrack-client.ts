@@ -624,29 +624,56 @@ export class YouTrackClient {
       // Only process custom fields if we have any to process
       if (Object.keys(fieldMappings).length > 0) {
         try {
-          // Get custom fields for the project first
-          await this.customFieldsManager.getProjectCustomFields(projectId);
-
-          // Convert to proper custom fields format
-          const customFields = this.customFieldsManager.convertToCustomFields(projectId, fieldMappings);
-
-          // Validate custom fields
-          const validation = await this.customFieldsManager.validateCustomFields(projectId, customFields);
-          if (!validation.valid) {
-            throw new Error(`Custom field validation failed: ${validation.errors.join(', ')}`);
+          // Validate that the project exists first
+          const projectValidation = await this.validateProject(projectId);
+          if (!projectValidation.exists || !projectValidation.accessible) {
+            throw new Error(`Project '${projectId}' not found or not accessible. Available projects: ${projectValidation.suggestions?.join(', ') || 'none'}`);
           }
 
-          issueData.customFields = customFields;
+          // Get custom fields for the project first
+          const projectCustomFields = await this.customFieldsManager.getProjectCustomFields(projectId);
+          
+          if (projectCustomFields.length === 0) {
+            logger.warn(`No custom fields found for project ${projectId}, using direct field assignment`);
+            // Use direct field assignment for standard fields
+            if (params.type) issueData.type = { name: params.type };
+            if (params.priority) issueData.priority = { name: params.priority };
+            if (params.state) issueData.state = { name: params.state };
+            if (params.assignee) issueData.assignee = { login: params.assignee };
+          } else {
+            // Convert to proper custom fields format
+            const customFields = this.customFieldsManager.convertToCustomFields(projectId, fieldMappings);
 
-          logger.info('Creating issue with proper custom fields structure', { 
+            // Validate custom fields
+            const validation = await this.customFieldsManager.validateCustomFields(projectId, customFields);
+            if (!validation.valid) {
+              logger.warn(`Custom field validation failed: ${validation.errors.join(', ')}, falling back to direct field assignment`);
+              // Fallback to direct field assignment
+              if (params.type) issueData.type = { name: params.type };
+              if (params.priority) issueData.priority = { name: params.priority };
+              if (params.state) issueData.state = { name: params.state };
+              if (params.assignee) issueData.assignee = { login: params.assignee };
+            } else {
+              issueData.customFields = customFields;
+            }
+          }
+
+          logger.info('Creating issue with field mappings', { 
             projectId, 
             summary: params.summary,
-            customFieldsCount: customFields.length 
+            fieldMappingsCount: Object.keys(fieldMappings).length,
+            hasCustomFields: !!issueData.customFields
           });
         } catch (customFieldError) {
-          // Log the error but continue with basic issue creation
-          logError(customFieldError as Error, { message: 'Custom field processing failed, creating basic issue', projectId, fieldMappings });
-          logger.warn('Proceeding with basic issue creation without custom fields');
+          // Log the error but continue with basic issue creation using direct field assignment
+          logError(customFieldError as Error, { message: 'Custom field processing failed, using direct field assignment', projectId, fieldMappings });
+          logger.warn('Proceeding with direct field assignment instead of custom fields');
+          
+          // Use direct field assignment as fallback
+          if (params.type) issueData.type = { name: params.type };
+          if (params.priority) issueData.priority = { name: params.priority };
+          if (params.state) issueData.state = { name: params.state };
+          if (params.assignee) issueData.assignee = { login: params.assignee };
         }
       } else {
         logger.info('Creating basic issue without custom fields', { 
@@ -3376,16 +3403,19 @@ export class YouTrackClient {
         this.validateIssueExists(params.targetIssueId)
       ]);
 
-      // YouTrack API approach: Add link to source issue
-      const linkData = {
-        linkType: params.linkType || 'Depends',
-        issues: [params.targetIssueId]
-      };
+      const linkType = params.linkType || 'Depends';
 
-      logApiCall('POST', `/issues/${params.sourceIssueId}/links`, linkData);
+      // YouTrack has multiple ways to create issue links, try different approaches
       
-      // Try standard approach first
+      // Approach 1: Try using the issues/{id}/links endpoint with POST
       try {
+        const linkData = {
+          linkType: { name: linkType },
+          issues: [{ id: params.targetIssueId }]
+        };
+
+        logApiCall('POST', `/issues/${params.sourceIssueId}/links`, linkData);
+        
         const response = await this.api.post(`/issues/${params.sourceIssueId}/links`, linkData);
         
         return {
@@ -3396,41 +3426,109 @@ export class YouTrackClient {
               dependency: {
                 sourceIssue: params.sourceIssueId,
                 targetIssue: params.targetIssueId,
-                linkType: params.linkType || 'Depends',
+                linkType: linkType,
                 message: `Created dependency: ${params.sourceIssueId} depends on ${params.targetIssueId}`
               },
               response: response.data
             }, null, 2)
           }]
         };
-      } catch (apiError) {
-        // Enhanced error handling with specific guidance
-        const errorMsg = (apiError as any)?.response?.data?.error_description || 
-                        (apiError as any)?.message || 'Unknown error';
+      } catch (approach1Error) {
+        logger.warn('Approach 1 failed, trying approach 2', { error: (approach1Error as any).message });
         
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              success: false,
-              error: 'YouTrack API limitation',
-              message: `Failed to create dependency programmatically: ${errorMsg}`,
-              recommendation: 'Use YouTrack web interface to create issue dependencies',
-              manual_steps: [
-                `1. Open issue ${params.sourceIssueId} in YouTrack web interface`,
-                `2. Click "Links" or "Dependencies" section`,
-                `3. Add dependency to issue ${params.targetIssueId}`,
-                `4. Select link type: ${params.linkType || 'Depends'}`
-              ],
-              dependency_info: {
-                sourceIssue: params.sourceIssueId,
-                targetIssue: params.targetIssueId,
-                linkType: params.linkType || 'Depends'
-              },
-              note: 'YouTrack REST API has limited support for creating issue links programmatically'
-            }, null, 2)
-          }]
-        };
+        // Approach 2: Try using the links endpoint directly
+        try {
+          const linkData = {
+            source: params.sourceIssueId,
+            target: params.targetIssueId,
+            linkType: linkType
+          };
+
+          logApiCall('POST', '/links', linkData);
+          
+          const response = await this.api.post('/links', linkData);
+          
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                success: true,
+                dependency: {
+                  sourceIssue: params.sourceIssueId,
+                  targetIssue: params.targetIssueId,
+                  linkType: linkType,
+                  message: `Created dependency: ${params.sourceIssueId} depends on ${params.targetIssueId}`
+                },
+                response: response.data
+              }, null, 2)
+            }]
+          };
+        } catch (approach2Error) {
+          logger.warn('Approach 2 failed, trying approach 3', { error: (approach2Error as any).message });
+          
+          // Approach 3: Try updating the source issue with links field
+          try {
+            const updateData = {
+              links: [{
+                linkType: { name: linkType },
+                issues: [{ id: params.targetIssueId }]
+              }]
+            };
+
+            logApiCall('POST', `/issues/${params.sourceIssueId}`, updateData);
+            
+            const response = await this.api.post(`/issues/${params.sourceIssueId}`, updateData);
+            
+            return {
+              content: [{
+                type: 'text',
+                text: JSON.stringify({
+                  success: true,
+                  dependency: {
+                    sourceIssue: params.sourceIssueId,
+                    targetIssue: params.targetIssueId,
+                    linkType: linkType,
+                    message: `Created dependency: ${params.sourceIssueId} depends on ${params.targetIssueId}`
+                  },
+                  response: response.data
+                }, null, 2)
+              }]
+            };
+          } catch (approach3Error) {
+            // All approaches failed, provide helpful guidance
+            const errorMsg = (approach3Error as any)?.response?.data?.error_description || 
+                            (approach3Error as any)?.message || 'Unknown error';
+            
+            return {
+              content: [{
+                type: 'text',
+                text: JSON.stringify({
+                  success: false,
+                  error: 'YouTrack API limitation',
+                  message: `Failed to create dependency programmatically: ${errorMsg}`,
+                  attempts: [
+                    { method: 'POST /issues/{id}/links', error: (approach1Error as any).message },
+                    { method: 'POST /links', error: (approach2Error as any).message },
+                    { method: 'POST /issues/{id} with links', error: (approach3Error as any).message }
+                  ],
+                  recommendation: 'Use YouTrack web interface to create issue dependencies',
+                  manual_steps: [
+                    `1. Open issue ${params.sourceIssueId} in YouTrack web interface`,
+                    `2. Click "Links" or "Dependencies" section`,
+                    `3. Add dependency to issue ${params.targetIssueId}`,
+                    `4. Select link type: ${linkType}`
+                  ],
+                  dependency_info: {
+                    sourceIssue: params.sourceIssueId,
+                    targetIssue: params.targetIssueId,
+                    linkType: linkType
+                  },
+                  note: 'YouTrack REST API has limited support for creating issue links programmatically. The specific endpoints and format vary by YouTrack version.'
+                }, null, 2)
+              }]
+            };
+          }
+        }
       }
     } catch (error) {
       logError(error as Error, params);

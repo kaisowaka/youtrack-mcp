@@ -55,11 +55,37 @@ export class CustomFieldsManager {
     }
 
     try {
-      const response = await this.api.get(`/admin/projects/${projectId}/customFields`, {
-        params: {
-          fields: 'field(id,name,fieldType(id,valueType)),bundle(id,values(id,name,description)),canBeEmpty,defaultValues(id,name)'
+      // Try the admin endpoint first
+      let response;
+      try {
+        response = await this.api.get(`/admin/projects/${projectId}/customFields`, {
+          params: {
+            fields: 'field(id,name,fieldType(id,valueType)),bundle(id,values(id,name,description)),canBeEmpty,defaultValues(id,name)'
+          }
+        });
+      } catch (adminError) {
+        // If admin endpoint fails, try the projects endpoint
+        logger.warn(`Admin endpoint failed for project ${projectId}, trying projects endpoint`);
+        try {
+          response = await this.api.get(`/projects/${projectId}/customFields`, {
+            params: {
+              fields: 'field(id,name,fieldType(id,valueType)),bundle(id,values(id,name,description)),canBeEmpty,defaultValues(id,name)'
+            }
+          });
+        } catch (projectError) {
+          // If both fail, try to get project info to validate it exists
+          logger.warn(`Both custom field endpoints failed for project ${projectId}, checking if project exists`);
+          try {
+            await this.api.get(`/projects/${projectId}`, {
+              params: { fields: 'id,name,shortName' }
+            });
+            logger.info(`Project ${projectId} exists but has no accessible custom fields`);
+            return [];
+          } catch (projectCheckError) {
+            throw new Error(`Project '${projectId}' not found or not accessible. Please verify the project ID/shortName.`);
+          }
         }
-      });
+      }
 
       const customFields = response.data as CustomFieldDefinition[];
       
@@ -72,6 +98,7 @@ export class CustomFieldsManager {
 
     } catch (error) {
       logger.error(`Failed to get custom fields for project ${projectId}:`, error);
+      // Return empty array instead of throwing to allow graceful degradation
       return [];
     }
   }
