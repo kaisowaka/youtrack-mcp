@@ -326,19 +326,60 @@ export class AdvancedQueryEngine {
           { name: 'negation', symbol: '-', example: '-state: Resolved' }
         ],
         exampleQueries: [
+          // Basic examples
+          'state: Open',
+          'priority: High',
+          'assignee: me',
+          
+          // Project-specific examples  
           'project: YTM state: Open',
-          'assignee: me state: {Open "In Progress"}',
+          'project: PROJECT-1 assignee: john.doe',
+          
+          // Multi-value examples
+          'state: {Open "In Progress"}',
+          'priority: {High Critical}',
+          'assignee: {alice bob charlie}',
+          
+          // Date and range examples
+          'created: >2025-01-01',
+          'updated: <2025-07-01',
+          'created: 2025-01-01..2025-07-01',
+          
+          // Complex combinations
           'priority: {High Critical} -state: Resolved',
-          'created: >2025-07-01 assignee: me',
-          '#authentication type: Bug',
-          'has: -assignee priority: High'
+          'created: >2025-07-01 assignee: me state: Open',
+          'project: YTM #authentication type: Bug',
+          
+          // Field existence examples
+          'has: -assignee priority: High',
+          'has: description -has: resolution',
+          
+          // Full-text search examples
+          '#bug authentication',
+          '#performance state: Open',
+          '#crash priority: Critical'
         ],
         advancedFeatures: [
-          'Full-text search with # prefix',
-          'Date range queries',
-          'Custom field queries',
-          'Sorting and pagination',
-          'Performance optimization'
+          '🔍 Full-text search with # prefix (e.g., #bug, #performance)',
+          '📅 Date range queries (e.g., created: 2025-01-01..2025-07-01)',
+          '🏷️ Custom field queries (use field names from your YouTrack setup)',
+          '🔀 Multi-field sorting (priority desc, created asc)',
+          '📄 Smart pagination (limit/offset with performance optimization)',
+          '⚡ Performance monitoring (query time tracking and suggestions)',
+          '💾 Intelligent caching (60-second TTL with automatic cleanup)',
+          '✅ Query validation (prevents invalid queries before execution)',
+          '🎯 Field optimization (minimal data transfer for better performance)',
+          '📊 Rich metadata (performance metrics and optimization hints)'
+        ],
+        usageTips: [
+          '💡 Always include project filter for best performance',
+          '🚀 Use "in" operator for multiple values: priority: {High Critical}',
+          '📋 Use "has:" for field existence: has: assignee, has: -description',
+          '📅 Date formats: YYYY-MM-DD or relative like ">2025-01-01"',
+          '🔍 Text search with #: #bug finds "bug" in summary and description',
+          '⚠️ Quote multi-word values: state: "In Progress"',
+          '🔄 Use pagination for large result sets: limit 100, offset 0',
+          '📈 Enable metadata to see performance and optimization suggestions'
         ]
       };
 

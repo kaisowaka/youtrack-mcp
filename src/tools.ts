@@ -87,22 +87,34 @@ export const toolDefinitions = [
   },
   {
     name: 'query_issues',
-    description: 'Query issues from YouTrack with filters',
+    description: `📝 Basic YouTrack query using raw YouTrack syntax (for advanced users familiar with YouTrack query language).
+
+USAGE EXAMPLES:
+• All open issues: {"query": "state: Open"}
+• Project issues: {"query": "project: PROJECT-1 state: Open"}
+• Complex syntax: {"query": "priority: {High Critical} -state: Resolved assignee: me"}
+• Text search: {"query": "#bug priority: High"}
+
+💡 TIP: For structured queries with better validation and performance, use 'advanced_query_issues' instead!`,
     inputSchema: {
       type: 'object',
       properties: {
         query: {
           type: 'string',
-          description: "YouTrack query syntax (e.g., 'project: PROJECT-1 state: Open')",
+          description: `YouTrack query syntax string. Examples:
+• "state: Open" - All open issues
+• "project: PROJECT-1 assignee: me" - My issues in project
+• "priority: High created: >2025-01-01" - High priority recent issues
+• "#bug -state: Resolved" - Open bugs (full-text search)`,
         },
         fields: {
           type: 'string',
-          description: 'Fields to return (comma-separated)',
+          description: 'Comma-separated field names to return. Example: "id,summary,state,priority" or "id,summary,description,assignee,created"',
           default: 'id,summary,description,state,priority,reporter,assignee',
         },
         limit: {
           type: 'integer',
-          description: 'Maximum number of issues to return',
+          description: 'Maximum number of issues to return (1-1000, default: 50)',
           default: 50,
         },
       },
@@ -111,63 +123,83 @@ export const toolDefinitions = [
   },
   {
     name: 'advanced_query_issues',
-    description: 'Advanced issue querying with structured filters, sorting, and performance optimization',
+    description: `🚀 Advanced issue querying with structured filters, sorting, and performance optimization.
+
+USAGE EXAMPLES:
+• Find unassigned high priority issues:
+  { "filters": [{"field": "assignee", "operator": "isEmpty", "value": null}, {"field": "priority", "operator": "equals", "value": "High"}] }
+
+• Recent issues with multiple states:
+  { "filters": [{"field": "state", "operator": "in", "value": ["Open", "In Progress"]}, {"field": "created", "operator": "greater", "value": "2025-01-01"}] }
+
+• Search with sorting and pagination:
+  { "textSearch": "bug", "sorting": [{"field": "priority", "direction": "desc"}], "pagination": {"limit": 20} }
+
+FEATURES: ✅ 10+ operators ✅ Performance monitoring ✅ Intelligent caching ✅ Query validation`,
     inputSchema: {
       type: 'object',
       properties: {
         projectId: {
           type: 'string',
-          description: 'Project ID to filter by (recommended for performance)',
+          description: 'Project ID to filter by (RECOMMENDED for performance - e.g., "PROJECT-1")',
         },
         filters: {
           type: 'array',
-          description: 'Array of structured filters',
+          description: `Array of structured filters. Examples:
+• {"field": "state", "operator": "equals", "value": "Open"}
+• {"field": "priority", "operator": "in", "value": ["High", "Critical"]}
+• {"field": "assignee", "operator": "isEmpty", "value": null}
+• {"field": "created", "operator": "greater", "value": "2025-01-01"}`,
           items: {
             type: 'object',
             properties: {
-              field: { type: 'string', description: 'Field name (e.g., state, priority, assignee)' },
+              field: { type: 'string', description: 'Field name: state, priority, assignee, reporter, created, updated, type, summary, description' },
               operator: { 
                 type: 'string', 
                 enum: ['equals', 'contains', 'startsWith', 'endsWith', 'in', 'notIn', 'greater', 'less', 'between', 'isEmpty', 'isNotEmpty'],
-                description: 'Filter operator'
+                description: 'Operator: equals (exact match), contains (text search), in (multiple values), isEmpty (no value), greater/less (dates/numbers), between (ranges)'
               },
-              value: { description: 'Filter value (can be string, array, or object)' },
-              negate: { type: 'boolean', description: 'Negate the filter condition' }
+              value: { description: 'Filter value: string for text, array for "in" operator, null for isEmpty, date string for date fields' },
+              negate: { type: 'boolean', description: 'Set to true to negate the condition (e.g., NOT equals)' }
             },
             required: ['field', 'operator', 'value']
           }
         },
         textSearch: {
           type: 'string',
-          description: 'Full-text search query',
+          description: 'Full-text search query (searches across summary and description). Example: "authentication bug" will find issues containing these words',
         },
         sorting: {
           type: 'array',
-          description: 'Array of sort options',
+          description: `Sort results by one or more fields. Examples:
+• [{"field": "priority", "direction": "desc"}] - High priority first
+• [{"field": "created", "direction": "desc"}] - Newest first
+• [{"field": "priority", "direction": "desc"}, {"field": "created", "direction": "asc"}] - Priority then oldest`,
           items: {
             type: 'object',
             properties: {
-              field: { type: 'string', description: 'Field to sort by' },
-              direction: { type: 'string', enum: ['asc', 'desc'], description: 'Sort direction' }
+              field: { type: 'string', description: 'Sort field: priority, created, updated, state, assignee, reporter, summary' },
+              direction: { type: 'string', enum: ['asc', 'desc'], description: 'asc (ascending/oldest first) or desc (descending/newest first)' }
             },
             required: ['field', 'direction']
           }
         },
         pagination: {
           type: 'object',
+          description: 'Control result pagination. Example: {"limit": 50, "offset": 0} gets first 50 results',
           properties: {
-            limit: { type: 'integer', description: 'Maximum number of results', default: 100 },
-            offset: { type: 'integer', description: 'Number of results to skip', default: 0 }
+            limit: { type: 'integer', description: 'Maximum results per page (1-1000, default: 100)', default: 100 },
+            offset: { type: 'integer', description: 'Number of results to skip (for page 2: use limit * 1, page 3: limit * 2, etc.)', default: 0 }
           }
         },
         fields: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Specific fields to return',
+          description: 'Custom fields to return. Leave empty for smart defaults. Examples: ["id", "summary", "state", "priority"] or ["id", "summary", "description", "assignee"]',
         },
         includeMetadata: {
           type: 'boolean',
-          description: 'Include query performance metadata',
+          description: 'Include performance metadata (query time, optimization suggestions, generated query). Useful for debugging and optimization',
           default: false
         }
       }
@@ -175,38 +207,47 @@ export const toolDefinitions = [
   },
   {
     name: 'smart_search_issues',
-    description: 'Intelligent search with auto-completion and smart defaults',
+    description: `🔍 Intelligent search with auto-completion and smart defaults for quick issue discovery.
+
+USAGE EXAMPLES:
+• Simple text search: {"searchText": "login bug"}
+• Project-specific search: {"searchText": "performance", "projectId": "PROJECT-1"}
+• Filtered search: {"searchText": "crash", "options": {"stateFilter": ["Open"], "priorityFilter": ["High", "Critical"]}}
+• Assigned issues: {"searchText": "feature", "options": {"assigneeFilter": ["john.doe"]}}
+
+PERFECT FOR: Quick searches, user-facing search interfaces, getting started with complex filters`,
     inputSchema: {
       type: 'object',
       properties: {
         searchText: {
           type: 'string',
-          description: 'Search text for full-text search across issues',
+          description: 'Search text for full-text search across issues. Examples: "login bug", "performance issue", "crash on startup"',
         },
         projectId: {
           type: 'string',
-          description: 'Project ID to limit search scope',
+          description: 'Project ID to limit search scope (improves performance). Example: "PROJECT-1", "MYAPP"',
         },
         options: {
           type: 'object',
+          description: 'Optional filters to refine the search results',
           properties: {
-            includeDescription: { type: 'boolean', description: 'Include description in search results' },
+            includeDescription: { type: 'boolean', description: 'Include full description in results (default: false for faster loading)' },
             stateFilter: { 
               type: 'array', 
               items: { type: 'string' },
-              description: 'Filter by issue states (e.g., ["Open", "In Progress"])' 
+              description: 'Filter by issue states. Examples: ["Open"], ["Open", "In Progress"], ["Resolved", "Closed"]' 
             },
             priorityFilter: { 
               type: 'array', 
               items: { type: 'string' },
-              description: 'Filter by priorities (e.g., ["High", "Critical"])' 
+              description: 'Filter by priorities. Examples: ["High"], ["High", "Critical"], ["Normal", "Low"]' 
             },
             assigneeFilter: { 
               type: 'array', 
               items: { type: 'string' },
-              description: 'Filter by assignees (login names)' 
+              description: 'Filter by assignees using login names. Examples: ["john.doe"], ["alice", "bob"], ["me"] (for current user)' 
             },
-            limit: { type: 'integer', description: 'Maximum results', default: 50 }
+            limit: { type: 'integer', description: 'Maximum results to return (1-100, default: 50)', default: 50 }
           }
         }
       },
@@ -215,13 +256,21 @@ export const toolDefinitions = [
   },
   {
     name: 'get_query_suggestions',
-    description: 'Get query syntax help and suggestions for building complex queries',
+    description: `📚 Get comprehensive query syntax help and suggestions for building complex queries.
+
+USAGE EXAMPLES:
+• Get general help: {} (no parameters needed)
+• Project-specific suggestions: {"projectId": "PROJECT-1"}
+
+RETURNS: Field reference, operator examples, common query patterns, performance tips, and real-world query examples
+
+PERFECT FOR: Learning YouTrack query syntax, discovering available fields, understanding operators, building complex filters`,
     inputSchema: {
       type: 'object',
       properties: {
         projectId: {
           type: 'string',
-          description: 'Project ID for project-specific suggestions',
+          description: 'Optional project ID for project-specific field suggestions and examples. Example: "PROJECT-1"',
         }
       }
     },
