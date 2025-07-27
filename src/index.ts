@@ -164,6 +164,22 @@ class YouTrackMCPServer {
             );
             break;
 
+          case 'advanced_query_issues':
+            result = await this.youtrackClient.advancedQueryIssues(args as any);
+            break;
+
+          case 'smart_search_issues':
+            result = await this.youtrackClient.smartSearch(
+              args.searchText as string,
+              args.projectId as string,
+              args.options as any
+            );
+            break;
+
+          case 'get_query_suggestions':
+            result = await this.youtrackClient.getQuerySuggestions(args.projectId as string);
+            break;
+
           case 'update_issue':
             result = await this.youtrackClient.updateIssue(
               args.issueId as string,

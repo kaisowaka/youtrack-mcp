@@ -110,6 +110,123 @@ export const toolDefinitions = [
     },
   },
   {
+    name: 'advanced_query_issues',
+    description: 'Advanced issue querying with structured filters, sorting, and performance optimization',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'Project ID to filter by (recommended for performance)',
+        },
+        filters: {
+          type: 'array',
+          description: 'Array of structured filters',
+          items: {
+            type: 'object',
+            properties: {
+              field: { type: 'string', description: 'Field name (e.g., state, priority, assignee)' },
+              operator: { 
+                type: 'string', 
+                enum: ['equals', 'contains', 'startsWith', 'endsWith', 'in', 'notIn', 'greater', 'less', 'between', 'isEmpty', 'isNotEmpty'],
+                description: 'Filter operator'
+              },
+              value: { description: 'Filter value (can be string, array, or object)' },
+              negate: { type: 'boolean', description: 'Negate the filter condition' }
+            },
+            required: ['field', 'operator', 'value']
+          }
+        },
+        textSearch: {
+          type: 'string',
+          description: 'Full-text search query',
+        },
+        sorting: {
+          type: 'array',
+          description: 'Array of sort options',
+          items: {
+            type: 'object',
+            properties: {
+              field: { type: 'string', description: 'Field to sort by' },
+              direction: { type: 'string', enum: ['asc', 'desc'], description: 'Sort direction' }
+            },
+            required: ['field', 'direction']
+          }
+        },
+        pagination: {
+          type: 'object',
+          properties: {
+            limit: { type: 'integer', description: 'Maximum number of results', default: 100 },
+            offset: { type: 'integer', description: 'Number of results to skip', default: 0 }
+          }
+        },
+        fields: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Specific fields to return',
+        },
+        includeMetadata: {
+          type: 'boolean',
+          description: 'Include query performance metadata',
+          default: false
+        }
+      }
+    },
+  },
+  {
+    name: 'smart_search_issues',
+    description: 'Intelligent search with auto-completion and smart defaults',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        searchText: {
+          type: 'string',
+          description: 'Search text for full-text search across issues',
+        },
+        projectId: {
+          type: 'string',
+          description: 'Project ID to limit search scope',
+        },
+        options: {
+          type: 'object',
+          properties: {
+            includeDescription: { type: 'boolean', description: 'Include description in search results' },
+            stateFilter: { 
+              type: 'array', 
+              items: { type: 'string' },
+              description: 'Filter by issue states (e.g., ["Open", "In Progress"])' 
+            },
+            priorityFilter: { 
+              type: 'array', 
+              items: { type: 'string' },
+              description: 'Filter by priorities (e.g., ["High", "Critical"])' 
+            },
+            assigneeFilter: { 
+              type: 'array', 
+              items: { type: 'string' },
+              description: 'Filter by assignees (login names)' 
+            },
+            limit: { type: 'integer', description: 'Maximum results', default: 50 }
+          }
+        }
+      },
+      required: ['searchText']
+    },
+  },
+  {
+    name: 'get_query_suggestions',
+    description: 'Get query syntax help and suggestions for building complex queries',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: {
+          type: 'string',
+          description: 'Project ID for project-specific suggestions',
+        }
+      }
+    },
+  },
+  {
     name: 'update_issue',
     description: 'Update an existing issue with enhanced field support. Always use separate properties for state, priority, type, etc. - never embed them in the summary.',
     inputSchema: {

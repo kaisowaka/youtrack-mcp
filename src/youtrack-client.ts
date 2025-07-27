@@ -6,6 +6,7 @@ import { CustomFieldsManager, CustomFieldValue } from './custom-fields-manager.j
 import { FieldSelector } from './field-selector.js';
 import { ProjectFieldManager, ProjectFieldsInfo } from './field-manager.js';
 import { GanttChartManager } from './utils/gantt-chart-manager.js';
+import { AdvancedQueryEngine, QueryParams } from './utils/advanced-query-engine.js';
 
 export interface MCPResponse {
   content: Array<{
@@ -330,6 +331,7 @@ export class YouTrackClient {
   private customFieldsManager: CustomFieldsManager;
   private dynamicFieldManager: ProjectFieldManager;
   private ganttChartManager: GanttChartManager;
+  private advancedQueryEngine: AdvancedQueryEngine;
 
   constructor(baseUrl: string, token: string) {
     this.cache = new SimpleCache();
@@ -347,6 +349,7 @@ export class YouTrackClient {
     // Initialize field managers
     this.customFieldsManager = new CustomFieldsManager(this.api, this.cache);
     this.dynamicFieldManager = new ProjectFieldManager(this.api, this.cache);
+    this.advancedQueryEngine = new AdvancedQueryEngine(this.api);
     this.ganttChartManager = new GanttChartManager(this);
 
     // Add retry logic for transient failures
@@ -837,6 +840,106 @@ export class YouTrackClient {
     } catch (error) {
       logError(error as Error, { query, fields, limit });
       throw new Error(`Failed to query issues: ${getErrorMessage(error)}`);
+    }
+  }
+
+  /**
+   * Advanced query with structured filtering, sorting, and performance optimization
+   */
+  async advancedQueryIssues(params: QueryParams): Promise<MCPResponse> {
+    try {
+      // Validate query before execution
+      const validation = this.advancedQueryEngine.validateQuery(params);
+      if (!validation.valid) {
+        throw new Error(`Query validation failed: ${validation.errors.join(', ')}`);
+      }
+
+      // Log warnings if any
+      if (validation.warnings.length > 0) {
+        logger.warn('Query warnings:', validation.warnings);
+      }
+
+      return await this.advancedQueryEngine.executeQuery(params);
+    } catch (error) {
+      logError(error as Error, { method: 'advancedQueryIssues', params });
+      throw new Error(`Advanced query failed: ${getErrorMessage(error)}`);
+    }
+  }
+
+  /**
+   * Get query suggestions and help for building complex queries
+   */
+  async getQuerySuggestions(projectId?: string): Promise<MCPResponse> {
+    try {
+      return await this.advancedQueryEngine.getQuerySuggestions(projectId);
+    } catch (error) {
+      logError(error as Error, { method: 'getQuerySuggestions', projectId });
+      throw new Error(`Failed to get query suggestions: ${getErrorMessage(error)}`);
+    }
+  }
+
+  /**
+   * Quick search with intelligent defaults and auto-completion
+   */
+  async smartSearch(
+    searchText: string, 
+    projectId?: string, 
+    options?: {
+      includeDescription?: boolean;
+      stateFilter?: string[];
+      priorityFilter?: string[];
+      assigneeFilter?: string[];
+      limit?: number;
+    }
+  ): Promise<MCPResponse> {
+    try {
+      const params: QueryParams = {
+        projectId,
+        textSearch: searchText,
+        pagination: { limit: options?.limit || 50 },
+        includeMetadata: true,
+        filters: []
+      };
+
+      // Add intelligent filters based on options
+      if (options?.stateFilter && options.stateFilter.length > 0) {
+        params.filters!.push({
+          field: 'state',
+          operator: 'in',
+          value: options.stateFilter
+        });
+      }
+
+      if (options?.priorityFilter && options.priorityFilter.length > 0) {
+        params.filters!.push({
+          field: 'priority',
+          operator: 'in',
+          value: options.priorityFilter
+        });
+      }
+
+      if (options?.assigneeFilter && options.assigneeFilter.length > 0) {
+        params.filters!.push({
+          field: 'assignee',
+          operator: 'in',
+          value: options.assigneeFilter
+        });
+      }
+
+      // Optimize field selection based on search type
+      if (options?.includeDescription) {
+        params.fields = [
+          'id', 'idReadable', 'summary', 'description',
+          'state(name)', 'priority(name)', 'type(name)',
+          'assignee(login,fullName)', 'reporter(login,fullName)',
+          'created', 'updated'
+        ];
+      }
+
+      return await this.advancedQueryEngine.executeQuery(params);
+    } catch (error) {
+      logError(error as Error, { method: 'smartSearch', searchText, projectId, options });
+      throw new Error(`Smart search failed: ${getErrorMessage(error)}`);
     }
   }
 
