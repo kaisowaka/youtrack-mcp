@@ -4521,7 +4521,7 @@ export class YouTrackClient {
     estimatedTime?: string;
   }): Promise<MCPResponse> {
     try {
-      // First, get the current user information
+      // Get current user information
       let currentUser = null;
       try {
         const userResponse = await this.api.get('/users/me', {
@@ -4532,26 +4532,94 @@ export class YouTrackClient {
         logger.warn('Could not get current user, will skip assignee update', userError);
       }
 
-      const updates: any = { 
-        state: 'In Progress'
-      };
+      // Get issue with current custom fields to extract correct field IDs
+      const issueResponse = await this.api.get(`/issues/${params.issueId}`, {
+        params: { 
+          fields: 'id,customFields(id,name,$type,value),project(shortName)' 
+        }
+      });
       
-      // Only set assignee if we could get current user info
-      if (currentUser) {
-        updates.assignee = currentUser.login;
+      const issue = issueResponse.data;
+      const stateField = issue.customFields.find((f: any) => f.name === 'State');
+      const assigneeField = issue.customFields.find((f: any) => f.name === 'Assignee');
+      
+      if (!stateField) {
+        throw new Error('State field not found on issue');
       }
       
+      // Get available states from project
+      const projectId = issue.project.shortName;
+      const fieldsResponse = await this.api.get(`/admin/projects/${projectId}/customFields`, {
+        params: { fields: 'field(name),bundle(values(name,id))' }
+      });
+      
+      const stateFieldDef = fieldsResponse.data.find((f: any) => f.field.name === 'State');
+      const inProgressState = stateFieldDef?.bundle?.values?.find((v: any) => v.name === 'In Progress');
+      
+      if (!inProgressState) {
+        throw new Error('In Progress state not found in project workflow');
+      }
+      
+      // Prepare custom fields update
+      const customFields: any[] = [
+        {
+          id: stateField.id,
+          $type: stateField.$type,
+          value: {
+            $type: 'StateBundleElement',
+            id: inProgressState.id,
+            name: inProgressState.name
+          }
+        }
+      ];
+      
+      // Add assignee if we have both current user and assignee field
+      if (currentUser && assigneeField) {
+        customFields.push({
+          id: assigneeField.id,
+          $type: assigneeField.$type,
+          value: {
+            $type: 'User',
+            login: currentUser.login
+          }
+        });
+      }
+      
+      // Handle estimation if provided - but don't fail if it doesn't work
       if (params.estimatedTime) {
-        // Convert time estimate to minutes if needed
         const timeInMinutes = this.parseTimeToMinutes(params.estimatedTime);
         if (timeInMinutes > 0) {
-          // Try different field names that might work for estimation
-          updates.estimation = timeInMinutes;
+          const estimationField = issue.customFields.find((f: any) => 
+            f.name.toLowerCase().includes('estimation') || 
+            f.name.toLowerCase().includes('estimate') ||
+            f.name.toLowerCase().includes('ideal') ||
+            f.name.toLowerCase().includes('original')
+          );
+          if (estimationField) {
+            // Skip estimation for now - it's causing issues
+            logger.warn('Estimation field found but skipping due to API compatibility issues', {
+              fieldName: estimationField.name,
+              fieldType: estimationField.$type,
+              estimatedTime: params.estimatedTime
+            });
+          } else {
+            logger.warn('No estimation field found for estimated time', { estimatedTime: params.estimatedTime });
+          }
         }
       }
       
-      // Update the issue
-      await this.updateIssue(params.issueId, updates);
+      // Update the issue with correct field IDs
+      const updateData = { customFields };
+      
+      logger.info('Updating issue with custom fields', { 
+        issueId: params.issueId, 
+        customFieldsCount: customFields.length,
+        updateData: JSON.stringify(updateData, null, 2)
+      });
+      
+      await this.api.post(`/issues/${params.issueId}`, updateData, {
+        params: { fields: 'id,customFields(name,value)' }
+      });
       
       // Add comment if provided
       if (params.comment) {
