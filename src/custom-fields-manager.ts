@@ -196,6 +196,23 @@ export class CustomFieldsManager {
               login: value
             } : value
           };
+        } else if (fieldType === 'period' || fieldName.toLowerCase().includes('estimation') || fieldName.toLowerCase().includes('time')) {
+          // Period field (like estimation, time spent)
+          const minutes = typeof value === 'number' ? value : parseInt(value.toString());
+          if (isNaN(minutes)) {
+            logger.warn(`Invalid period value for ${fieldName}: ${value}`);
+            continue;
+          }
+          
+          customFieldValue = {
+            id: fieldDef.field.id,
+            $type: 'PeriodIssueCustomField',
+            name: fieldDef.field.name,
+            value: {
+              $type: 'PeriodValue',
+              minutes: minutes
+            }
+          };
         } else {
           // Default to simple field
           customFieldValue = {

@@ -247,6 +247,36 @@ class YouTrackMCPServer {
             );
             break;
 
+          case 'delete_issue_comment':
+            result = await this.youtrackClient.deleteIssueComment(
+              args.issueId as string,
+              args.commentId as string
+            );
+            break;
+
+          case 'update_issue_comment':
+            result = await this.youtrackClient.updateIssueComment(
+              args.issueId as string,
+              args.commentId as string,
+              args.text as string
+            );
+            break;
+
+          case 'bulk_delete_comments':
+            result = await this.youtrackClient.bulkDeleteComments(
+              args.operations as Array<{issueId: string, commentId: string, reason?: string}>
+            );
+            break;
+
+          case 'find_redundant_comments':
+            result = await this.youtrackClient.findRedundantComments({
+              projectId: args.projectId as string,
+              issueIds: args.issueIds as string[],
+              patterns: args.patterns as string[],
+              dryRun: args.dryRun as boolean
+            });
+            break;
+
           case 'search_users':
             result = await this.youtrackClient.searchUsers(args.query as string);
             break;

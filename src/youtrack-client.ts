@@ -947,13 +947,18 @@ export class YouTrackClient {
     try {
       logApiCall('POST', `/issues/${issueId}`, updates);
 
-      // Get issue to determine project ID for custom field mapping
+      // Get issue to determine project ID and get current field structure
       const issueResponse = await this.api.get(`/issues/${issueId}`, {
-        params: { fields: 'id,project(id)' }
+        params: { 
+          fields: 'id,project(id),customFields(id,name,value,projectCustomField(field(name,fieldType)))' 
+        }
       });
-      const projectId = issueResponse.data.project.id;
+      const issue = issueResponse.data;
+      const projectId = issue.project.id;
 
-      const updateData: any = {};
+      const updateData: any = {
+        $type: 'Issue'
+      };
 
       // Handle basic fields
       if (updates.summary) {
@@ -963,55 +968,134 @@ export class YouTrackClient {
         updateData.description = updates.description;
       }
 
-      // Handle custom fields properly - but exclude assignee first
-      const customFieldMappings: Record<string, any> = {};
-      
-      if (updates.state) customFieldMappings.state = updates.state;
-      if (updates.priority) customFieldMappings.priority = updates.priority;
-      if (updates.type) customFieldMappings.type = updates.type;
-      if (updates.subsystem) customFieldMappings.subsystem = updates.subsystem;
-      if (updates.dueDate) customFieldMappings.dueDate = updates.dueDate;
-      if (updates.estimation) customFieldMappings.estimation = updates.estimation;
+      // Handle custom fields using the same approach as startWorkingOnIssue
+      if (updates.state || updates.priority || updates.type || updates.subsystem || 
+          updates.dueDate || updates.estimation || updates.assignee) {
+        
+        const customFields = [];
 
-      // Handle assignee separately using a more direct approach
-      if (updates.assignee) {
-        try {
-          // Try to find the user first if it's not already a user object
-          if (typeof updates.assignee === 'string') {
-            const userQuery = updates.assignee;
-            const usersResponse = await this.api.get('/users', {
-              params: { 
-                query: userQuery,
-                fields: 'id,login,fullName',
-                $top: 10
-              }
+        // Get field IDs from the issue's customFields (like in startWorkingOnIssue)
+        if (updates.state) {
+          const stateField = issue.customFields.find((f: any) => 
+            f.name.toLowerCase() === 'state'
+          );
+          if (stateField) {
+            // Get available state values
+            const projectFieldResponse = await this.api.get(`/admin/projects/${projectId}/customFields/${stateField.projectCustomField.id}`, {
+              params: { fields: 'bundle(values(id,name))' }
             });
             
-            const users = usersResponse.data || [];
-            const user = users.find((u: any) => 
-              u.login === userQuery || 
-              u.fullName?.toLowerCase().includes(userQuery.toLowerCase())
+            const stateValue = projectFieldResponse.data.bundle?.values?.find((v: any) => 
+              v.name.toLowerCase() === updates.state!.toLowerCase()
             );
             
-            if (user) {
-              customFieldMappings.assignee = user.login;
-            } else {
-              logger.warn(`User not found for assignee: ${userQuery}`);
+            if (stateValue) {
+              customFields.push({
+                $type: 'StateIssueCustomField',
+                id: stateField.id,
+                value: {
+                  $type: 'StateBundleElement',
+                  id: stateValue.id,
+                  name: stateValue.name
+                }
+              });
             }
-          } else {
-            customFieldMappings.assignee = updates.assignee;
           }
-        } catch (userError) {
-          logger.warn('Failed to resolve assignee user:', userError);
-          // Still try to use the original value
-          customFieldMappings.assignee = updates.assignee;
         }
-      }
 
-      // Convert to proper custom fields format
-      if (Object.keys(customFieldMappings).length > 0) {
-        const customFields = await this.customFieldsManager.convertToCustomFields(projectId, customFieldMappings);
-        updateData.customFields = customFields;
+        if (updates.priority) {
+          const priorityField = issue.customFields.find((f: any) => 
+            f.name.toLowerCase() === 'priority'
+          );
+          if (priorityField) {
+            const projectFieldResponse = await this.api.get(`/admin/projects/${projectId}/customFields/${priorityField.projectCustomField.id}`, {
+              params: { fields: 'bundle(values(id,name))' }
+            });
+            
+            const priorityValue = projectFieldResponse.data.bundle?.values?.find((v: any) => 
+              v.name.toLowerCase() === updates.priority!.toLowerCase()
+            );
+            
+            if (priorityValue) {
+              customFields.push({
+                $type: 'SingleEnumIssueCustomField',
+                id: priorityField.id,
+                value: {
+                  $type: 'EnumBundleElement',
+                  id: priorityValue.id,
+                  name: priorityValue.name
+                }
+              });
+            }
+          }
+        }
+
+        if (updates.assignee) {
+          const assigneeField = issue.customFields.find((f: any) => 
+            f.name.toLowerCase() === 'assignee'
+          );
+          if (assigneeField) {
+            // Try to find the user
+            let userValue;
+            if (typeof updates.assignee === 'string') {
+              try {
+                const usersResponse = await this.api.get('/users', {
+                  params: { 
+                    query: updates.assignee,
+                    fields: 'id,login,fullName',
+                    $top: 10
+                  }
+                });
+                
+                const user = usersResponse.data.find((u: any) => 
+                  u.login === updates.assignee || 
+                  u.fullName?.toLowerCase().includes(updates.assignee!.toLowerCase())
+                );
+                
+                if (user) {
+                  userValue = {
+                    $type: 'User',
+                    id: user.id,
+                    login: user.login
+                  };
+                }
+              } catch (userError) {
+                logger.warn('Failed to resolve assignee user:', userError);
+              }
+            }
+            
+            if (userValue) {
+              customFields.push({
+                $type: 'SingleUserIssueCustomField',
+                id: assigneeField.id,
+                value: userValue
+              });
+            }
+          }
+        }
+
+        if (updates.estimation) {
+          const estimationField = issue.customFields.find((f: any) => 
+            f.name.toLowerCase().includes('estimation')
+          );
+          if (estimationField) {
+            const minutes = typeof updates.estimation === 'number' ? updates.estimation : parseInt(String(updates.estimation));
+            if (!isNaN(minutes)) {
+              customFields.push({
+                $type: 'PeriodIssueCustomField',
+                id: estimationField.id,
+                value: {
+                  $type: 'PeriodValue',
+                  minutes: minutes
+                }
+              });
+            }
+          }
+        }
+
+        if (customFields.length > 0) {
+          updateData.customFields = customFields;
+        }
       }
 
       logger.info('Updating issue with proper custom fields structure', { 
@@ -1350,6 +1434,193 @@ export class YouTrackClient {
     } catch (error) {
       logError(error as Error, { issueId, text });
       throw new Error(`Failed to add comment: ${getErrorMessage(error)}`);
+    }
+  }
+
+  async deleteIssueComment(issueId: string, commentId: string): Promise<MCPResponse> {
+    try {
+      logApiCall('DELETE', `/issues/${issueId}/comments/${commentId}`, { issueId, commentId });
+
+      await this.api.delete(`/issues/${issueId}/comments/${commentId}`);
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            message: `Comment ${commentId} deleted successfully from issue ${issueId}`,
+            issueId,
+            commentId
+          }, null, 2),
+        }],
+      };
+    } catch (error) {
+      logError(error as Error, { issueId, commentId });
+      throw new Error(`Failed to delete comment: ${getErrorMessage(error)}`);
+    }
+  }
+
+  async updateIssueComment(issueId: string, commentId: string, text: string): Promise<MCPResponse> {
+    try {
+      logApiCall('POST', `/issues/${issueId}/comments/${commentId}`, { issueId, commentId, text });
+
+      const response = await this.api.post(`/issues/${issueId}/comments/${commentId}`, {
+        text,
+      });
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            message: `Comment ${commentId} updated successfully on issue ${issueId}`,
+            comment: response.data,
+            issueId,
+            commentId
+          }, null, 2),
+        }],
+      };
+    } catch (error) {
+      logError(error as Error, { issueId, commentId, text });
+      throw new Error(`Failed to update comment: ${getErrorMessage(error)}`);
+    }
+  }
+
+  async bulkDeleteComments(operations: Array<{issueId: string, commentId: string, reason?: string}>): Promise<MCPResponse> {
+    try {
+      logApiCall('BULK_DELETE', '/comments', { operationsCount: operations.length });
+
+      const results = [];
+      const errors = [];
+
+      for (const operation of operations) {
+        try {
+          await this.api.delete(`/issues/${operation.issueId}/comments/${operation.commentId}`);
+          results.push({
+            success: true,
+            issueId: operation.issueId,
+            commentId: operation.commentId,
+            reason: operation.reason || 'No reason provided'
+          });
+        } catch (error) {
+          errors.push({
+            success: false,
+            issueId: operation.issueId,
+            commentId: operation.commentId,
+            error: getErrorMessage(error),
+            reason: operation.reason || 'No reason provided'
+          });
+        }
+      }
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: errors.length === 0,
+            message: `Bulk comment deletion completed: ${results.length} successful, ${errors.length} failed`,
+            totalOperations: operations.length,
+            successful: results,
+            failed: errors,
+            summary: {
+              successCount: results.length,
+              errorCount: errors.length,
+              successRate: `${((results.length / operations.length) * 100).toFixed(1)}%`
+            }
+          }, null, 2),
+        }],
+      };
+    } catch (error) {
+      logError(error as Error, { operationsCount: operations.length });
+      throw new Error(`Failed to perform bulk comment deletion: ${getErrorMessage(error)}`);
+    }
+  }
+
+  async findRedundantComments(params: {
+    projectId?: string,
+    issueIds?: string[],
+    patterns?: string[],
+    dryRun?: boolean
+  }): Promise<MCPResponse> {
+    try {
+      logApiCall('GET', '/issues/comments-analysis', params);
+
+      const defaultPatterns = [
+        'Time Estimate:',
+        'Estimated time:',
+        'hours)',
+        'minutes)',
+        'days)',
+        'Breakdown:',
+        'Task breakdown',
+        'Time breakdown'
+      ];
+
+      const searchPatterns = params.patterns || defaultPatterns;
+      const foundRedundantComments = [];
+
+      // If specific issue IDs provided, search those
+      if (params.issueIds && params.issueIds.length > 0) {
+        for (const issueId of params.issueIds) {
+          const comments = await this.getIssueComments(issueId);
+          const parsedComments = JSON.parse(comments.content[0].text);
+          
+          for (const comment of parsedComments) {
+            if (comment.text) {
+              const matchedPatterns = searchPatterns.filter(pattern => 
+                comment.text.toLowerCase().includes(pattern.toLowerCase())
+              );
+              
+              if (matchedPatterns.length > 0) {
+                foundRedundantComments.push({
+                  issueId,
+                  commentId: comment.id,
+                  author: comment.author?.login || 'unknown',
+                  created: comment.created,
+                  text: comment.text.substring(0, 200) + (comment.text.length > 200 ? '...' : ''),
+                  matchedPatterns,
+                  reason: 'Contains time estimate patterns - likely redundant after proper field estimation'
+                });
+              }
+            }
+          }
+        }
+      } else if (params.projectId) {
+        // Search all issues in project - would need more complex implementation
+        foundRedundantComments.push({
+          note: 'Project-wide search requires issue IDs. Use issueIds parameter for specific issues.',
+          suggestion: `Use query_issues with 'project: ${params.projectId}' first to get issue IDs`
+        });
+      }
+
+      const result = {
+        success: true,
+        dryRun: params.dryRun !== false,
+        message: `Found ${foundRedundantComments.length} potentially redundant comments`,
+        redundantComments: foundRedundantComments,
+        searchPatterns,
+        recommendations: params.dryRun !== false ? 
+          'Review the found comments and use bulk_delete_comments to remove them if confirmed redundant' :
+          'Use dryRun: false to actually delete these comments',
+        bulkDeleteExample: foundRedundantComments.length > 0 ? {
+          toolName: 'bulk_delete_comments',
+          operations: foundRedundantComments.slice(0, 3).map(comment => ({
+            issueId: comment.issueId,
+            commentId: comment.commentId,
+            reason: comment.reason
+          }))
+        } : null
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(result, null, 2),
+        }],
+      };
+    } catch (error) {
+      logError(error as Error, params);
+      throw new Error(`Failed to find redundant comments: ${getErrorMessage(error)}`);
     }
   }
 

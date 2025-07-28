@@ -496,6 +496,106 @@ PERFECT FOR: Learning YouTrack query syntax, discovering available fields, under
     },
   },
   {
+    name: 'delete_issue_comment',
+    description: 'Delete a comment from an issue. Use this to remove redundant, outdated, or incorrect comments.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        issueId: {
+          type: 'string',
+          description: 'The issue ID',
+        },
+        commentId: {
+          type: 'string',
+          description: 'The comment ID to delete (get this from get_issue_comments)',
+        },
+      },
+      required: ['issueId', 'commentId'],
+    },
+  },
+  {
+    name: 'update_issue_comment',
+    description: 'Update/edit an existing comment on an issue',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        issueId: {
+          type: 'string',
+          description: 'The issue ID',
+        },
+        commentId: {
+          type: 'string',
+          description: 'The comment ID to update (get this from get_issue_comments)',
+        },
+        text: {
+          type: 'string',
+          description: 'New comment text (supports Markdown)',
+        },
+      },
+      required: ['issueId', 'commentId', 'text'],
+    },
+  },
+  {
+    name: 'bulk_delete_comments',
+    description: 'Delete multiple comments across issues in a single operation. Useful for cleaning up redundant comments.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        operations: {
+          type: 'array',
+          description: 'Array of comment deletion operations',
+          items: {
+            type: 'object',
+            properties: {
+              issueId: {
+                type: 'string',
+                description: 'The issue ID'
+              },
+              commentId: {
+                type: 'string', 
+                description: 'The comment ID to delete'
+              },
+              reason: {
+                type: 'string',
+                description: 'Optional reason for deletion (for audit trail)'
+              }
+            },
+            required: ['issueId', 'commentId']
+          }
+        }
+      },
+      required: ['operations'],
+    },
+  },
+  {
+    name: 'find_redundant_comments',
+    description: 'Analyze issues to find potentially redundant comments (like old time estimates) that could be cleaned up',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        issueIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Specific issue IDs to analyze for redundant comments'
+        },
+        projectId: {
+          type: 'string',
+          description: 'Project ID to search (requires additional query to get issue IDs first)'
+        },
+        patterns: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Custom patterns to search for (default: time estimate patterns)'
+        },
+        dryRun: {
+          type: 'boolean',
+          description: 'If true (default), only identifies comments without deleting them',
+          default: true
+        }
+      }
+    },
+  },
+  {
     name: 'search_users',
     description: 'Search for users in YouTrack',
     inputSchema: {
