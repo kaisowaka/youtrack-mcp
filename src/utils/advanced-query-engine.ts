@@ -160,21 +160,37 @@ export class AdvancedQueryEngine {
 
     switch (operator) {
       case 'equals':
-        return `${negation}${field}: ${this.escapeValue(value)}`;
+        return `${negation}${field}: ${this.escapeValue(value, field)}`;
       
       case 'contains':
-        return `${negation}${field}: ${this.escapeValue(value)}`;
+        return `${negation}${field}: ${this.escapeValue(value, field)}`;
       
       case 'in':
         if (Array.isArray(value)) {
-          // For YouTrack, use proper syntax for multiple values
-          const escapedValues = value.map(v => this.escapeValue(v));
+          // Special handling for state fields - filter out invalid states with spaces
+          if (field?.toLowerCase() === 'state') {
+            const validStates = value.filter((state: string) => !String(state).includes(' '));
+            if (validStates.length === 0) {
+              throw new Error(`All provided state values contain spaces and cannot be queried in YouTrack. Use states without spaces like: Open, Done, Duplicate`);
+            }
+            if (validStates.length !== value.length) {
+              console.warn(`Warning: Some state values with spaces were filtered out. Using: ${validStates.join(', ')}`);
+            }
+            if (validStates.length === 1) {
+              return `${negation}${field}: ${validStates[0]}`;
+            }
+            // Use comma-separated syntax for multiple states (YouTrack syntax)
+            return `${negation}${field}: ${validStates.join(',')}`;
+          }
+          
+          // For other fields, use OR syntax for multiple values
+          const escapedValues = value.map(v => this.escapeValue(v, field));
           if (escapedValues.length === 1) {
             return `${negation}${field}: ${escapedValues[0]}`;
           }
-          return `${negation}${field}: {${escapedValues.join(' ')}}`;
+          return escapedValues.map(val => `${negation}${field}: ${val}`).join(' or ');
         }
-        return `${negation}${field}: ${this.escapeValue(value)}`;
+        return `${negation}${field}: ${this.escapeValue(value, field)}`;
       
       case 'isEmpty':
         return `has: ${negation}-${field}`;
@@ -183,19 +199,19 @@ export class AdvancedQueryEngine {
         return `has: ${negation}${field}`;
       
       case 'greater':
-        return `${negation}${field}: ${this.escapeValue(value)}..`;
+        return `${negation}${field}: ${this.escapeValue(value, field)}..`;
       
       case 'less':
-        return `${negation}${field}: ..${this.escapeValue(value)}`;
+        return `${negation}${field}: ..${this.escapeValue(value, field)}`;
       
       case 'between':
         if (Array.isArray(value) && value.length === 2) {
-          return `${negation}${field}: ${this.escapeValue(value[0])}..${this.escapeValue(value[1])}`;
+          return `${negation}${field}: ${this.escapeValue(value[0], field)}..${this.escapeValue(value[1], field)}`;
         }
         break;
       
       default:
-        return `${negation}${field}: ${this.escapeValue(value)}`;
+        return `${negation}${field}: ${this.escapeValue(value, field)}`;
     }
 
     return '';
@@ -203,10 +219,21 @@ export class AdvancedQueryEngine {
 
   /**
    * Escape special characters in query values
+   * Note: YouTrack doesn't support quoted state values, so we filter out invalid states
    */
-  private escapeValue(value: any): string {
+  private escapeValue(value: any, fieldName?: string): string {
     const str = String(value);
-    // For multi-word values or values with special characters, use quotes
+    
+    // Special handling for state fields - YouTrack doesn't support quoted state values
+    if (fieldName?.toLowerCase() === 'state') {
+      // Only allow states without spaces since YouTrack can't query states with spaces
+      if (str.includes(' ')) {
+        throw new Error(`State values with spaces (like "${str}") cannot be queried in YouTrack. Use states without spaces like: Open, Done, Duplicate`);
+      }
+      return str;
+    }
+    
+    // For other fields, use quotes for multi-word values or values with special characters
     if (str.includes(' ') || str.includes(':') || str.includes('{') || str.includes('}') || str.includes('-')) {
       return `"${str.replace(/"/g, '\\"')}"`;
     }

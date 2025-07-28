@@ -358,6 +358,15 @@ class YouTrackMCPServer {
             });
             break;
 
+          case 'create_sprint':
+            result = await this.youtrackClient.createSprint({
+              boardId: args.boardId as string,
+              name: args.name as string,
+              start: args.start as string,
+              finish: args.finish as string,
+            });
+            break;
+
           case 'assign_issue_to_sprint':
             result = await this.youtrackClient.assignIssueToSprint({
               issueId: args.issueId as string,

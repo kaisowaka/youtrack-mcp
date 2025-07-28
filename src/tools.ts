@@ -95,6 +95,8 @@ USAGE EXAMPLES:
 • Complex syntax: {"query": "priority: {High Critical} -state: Resolved assignee: me"}
 • Text search: {"query": "#bug priority: High"}
 
+⚠️ IMPORTANT: YouTrack cannot query states with spaces (e.g., "In Progress", "To Verify"). Only use states without spaces like "Open", "Done", "Duplicate".
+
 💡 TIP: For structured queries with better validation and performance, use 'advanced_query_issues' instead!`,
     inputSchema: {
       type: 'object',
@@ -129,13 +131,15 @@ USAGE EXAMPLES:
 • Find unassigned high priority issues:
   { "filters": [{"field": "assignee", "operator": "isEmpty", "value": null}, {"field": "priority", "operator": "equals", "value": "High"}] }
 
-• Recent issues with multiple states:
-  { "filters": [{"field": "state", "operator": "in", "value": ["Open", "In Progress"]}, {"field": "created", "operator": "greater", "value": "2025-01-01"}] }
+• Recent issues with multiple states (auto-filters invalid states):
+  { "filters": [{"field": "state", "operator": "in", "value": ["Open", "Done"]}, {"field": "created", "operator": "greater", "value": "2025-01-01"}] }
 
 • Search with sorting and pagination:
   { "textSearch": "bug", "sorting": [{"field": "priority", "direction": "desc"}], "pagination": {"limit": 20} }
 
-FEATURES: ✅ 10+ operators ✅ Performance monitoring ✅ Intelligent caching ✅ Query validation`,
+⚠️ STATE LIMITATION: YouTrack cannot query states with spaces. The system automatically filters out invalid states like "In Progress" and "To Verify", keeping only valid ones like "Open", "Done", "Duplicate".
+
+FEATURES: ✅ 10+ operators ✅ Performance monitoring ✅ Intelligent caching ✅ Query validation ✅ Auto-filtering invalid states`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -235,7 +239,7 @@ PERFECT FOR: Quick searches, user-facing search interfaces, getting started with
             stateFilter: { 
               type: 'array', 
               items: { type: 'string' },
-              description: 'Filter by issue states. Examples: ["Open"], ["Open", "In Progress"], ["Resolved", "Closed"]' 
+              description: 'Filter by issue states. ⚠️ Only use states without spaces (e.g., "Open", "Done", not "In Progress"). Examples: ["Open"], ["Open", "Done"], ["Resolved", "Closed"]' 
             },
             priorityFilter: { 
               type: 'array', 
@@ -799,22 +803,62 @@ PERFECT FOR: Learning YouTrack query syntax, discovering available fields, under
     },
   },
   {
+    name: 'create_sprint',
+    description: `🏃‍♂️ Create a new sprint in an agile board.
+
+USAGE EXAMPLES:
+• Basic sprint: {"boardId": "181-20", "name": "Sprint 1"}
+• Scheduled sprint: {"boardId": "181-20", "name": "Phase 1", "start": "2025-08-01", "finish": "2025-08-15"}
+• Quick sprint: {"boardId": "181-20", "name": "Hotfix Sprint", "start": "2025-07-28"}
+
+💡 TIP: Get board ID from list_agile_boards tool first!`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        boardId: {
+          type: 'string',
+          description: 'The agile board ID where the sprint will be created. Example: "181-20"',
+        },
+        name: {
+          type: 'string',
+          description: 'Sprint name. Examples: "Sprint 1", "Phase 1", "Release 2.0 Sprint"',
+        },
+        start: {
+          type: 'string',
+          description: 'Sprint start date in YYYY-MM-DD format. Example: "2025-08-01"',
+        },
+        finish: {
+          type: 'string',
+          description: 'Sprint end date in YYYY-MM-DD format. Example: "2025-08-15"',
+        },
+      },
+      required: ['boardId', 'name'],
+    },
+  },
+  {
     name: 'assign_issue_to_sprint',
-    description: 'Assign an issue to a specific sprint',
+    description: `🎯 Assign an issue to a specific sprint.
+
+USAGE EXAMPLES:
+• Simple assignment: {"issueId": "3-357", "sprintId": "184-21"}
+• With board ID: {"issueId": "INT-123", "sprintId": "184-21", "boardId": "181-20"}
+
+⚠️ IMPORTANT: Use actual YouTrack sprint IDs (like "184-21"), not custom names!
+💡 TIP: Use get_board_details to see available sprints first!`,
     inputSchema: {
       type: 'object',
       properties: {
         issueId: {
           type: 'string',
-          description: 'The issue ID to assign',
+          description: 'The issue ID to assign. Examples: "3-357", "INT-123", "PROJECT-456"',
         },
         sprintId: {
           type: 'string',
-          description: 'The sprint ID to assign the issue to',
+          description: 'The actual YouTrack sprint ID (NOT custom name). Examples: "184-21", "185-20". Get this from get_board_details!',
         },
         boardId: {
           type: 'string',
-          description: 'The agile board ID (optional)',
+          description: 'The agile board ID (optional, will auto-detect if not provided). Example: "181-20"',
         },
       },
       required: ['issueId', 'sprintId'],

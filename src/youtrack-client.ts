@@ -2391,6 +2391,47 @@ export class YouTrackClient {
   }
 
   /**
+   * Create a new sprint
+   */
+  async createSprint(params: {
+    boardId: string;
+    name: string;
+    start?: string | number;
+    finish?: string | number;
+  }): Promise<MCPResponse> {
+    try {
+      const sprintData: any = {
+        name: params.name
+      };
+
+      // Convert dates to timestamps if they're strings
+      if (params.start) {
+        sprintData.start = typeof params.start === 'string' ? new Date(params.start).getTime() : params.start;
+      }
+      if (params.finish) {
+        sprintData.finish = typeof params.finish === 'string' ? new Date(params.finish).getTime() : params.finish;
+      }
+
+      logApiCall('POST', `/agiles/${params.boardId}/sprints`, sprintData);
+      const response = await this.api.post(`/agiles/${params.boardId}/sprints`, sprintData);
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            sprint: response.data,
+            message: `Sprint "${params.name}" created successfully with ID: ${response.data.id}`
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logError(error as Error, params);
+      throw new Error(`Failed to create sprint: ${(error as Error).message}`);
+    }
+  }
+
+  /**
    * Assign issue to sprint
    */
   async assignIssueToSprint(params: {
@@ -2416,34 +2457,31 @@ export class YouTrackClient {
         }
       }
 
-      // Use the agile board assignment API
-      const assignData = {
-        commands: [`Sprint ${params.sprintId}`],
-        issues: [{ id: params.issueId }]
-      };
+      // Method 1: Try using the correct agile board API to add issue to sprint
+      try {
+        const assignData = {
+          id: params.issueId  // Correct format: just the issue ID
+        };
 
-      logApiCall('POST', `/agiles/${boardId}`, assignData);
-      await this.api.post(`/agiles/${boardId}`, assignData);
-
-      // Verify the assignment by checking the sprint
-      const verifyParams = { 
-        fields: 'id,name,issues(id,summary)' 
-      };
-      const verifyResponse = await this.api.get(`/agiles/${boardId}/sprints/${params.sprintId}`, { params: verifyParams });
-
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify({
-            success: true,
-            issueId: params.issueId,
-            sprintId: params.sprintId,
-            boardId: boardId,
-            message: `Issue ${params.issueId} assigned to sprint ${params.sprintId}`,
-            sprintIssues: verifyResponse.data.issues?.length || 0
-          }, null, 2)
-        }]
-      };
+        logApiCall('POST', `/agiles/${boardId}/sprints/${params.sprintId}/issues`, assignData);
+        await this.api.post(`/agiles/${boardId}/sprints/${params.sprintId}/issues`, assignData);
+        
+        // Success - return immediately
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              success: true,
+              message: `Issue ${params.issueId} successfully assigned to sprint ${params.sprintId}`,
+              method: 'direct_assignment'
+            }, null, 2)
+          }]
+        };
+        
+      } catch (error) {
+        logError(error as Error, params);
+        throw new Error(`Failed to assign issue to sprint: ${(error as Error).message}`);
+      }
     } catch (error) {
       logError(error as Error, params);
       throw new Error(`Failed to assign issue to sprint: ${(error as Error).message}`);
@@ -4574,5 +4612,12 @@ export class YouTrackClient {
       case 'w': return value * 5 * 8 * 60; // 5-day work week
       default: return 0;
     }
+  }
+
+  /**
+   * Get API client for debugging purposes (should only be used in tests)
+   */
+  getApiClient() {
+    return this.api;
   }
 }
