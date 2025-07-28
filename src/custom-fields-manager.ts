@@ -3,9 +3,9 @@ import { logger } from './logger.js';
 import { SimpleCache } from './cache.js';
 
 export interface CustomFieldValue {
+  id: string;
   $type?: string;
   name: string;
-  id?: string;
   value?: any;
 }
 
@@ -106,9 +106,11 @@ export class CustomFieldsManager {
   /**
    * Convert field name and value to YouTrack custom field format
    */
-  convertToCustomFields(projectId: string, fieldMappings: Record<string, any>): CustomFieldValue[] {
+  async convertToCustomFields(projectId: string, fieldMappings: Record<string, any>): Promise<CustomFieldValue[]> {
     const customFields: CustomFieldValue[] = [];
-    const projectFields = this.customFieldsCache.get(projectId) || [];
+    
+    // Ensure we have the project fields loaded
+    const projectFields = await this.getProjectCustomFields(projectId);
 
     for (const [fieldName, value] of Object.entries(fieldMappings)) {
       if (value === undefined || value === null) continue;
@@ -150,6 +152,7 @@ export class CustomFieldsManager {
           }
 
           customFieldValue = {
+            id: fieldDef.field.id,
             $type: 'SingleEnumIssueCustomField',
             name: fieldDef.field.name,
             value: {
@@ -173,7 +176,8 @@ export class CustomFieldsManager {
           }
 
           customFieldValue = {
-            $type: 'StateMachineIssueCustomField',
+            id: fieldDef.field.id,
+            $type: 'StateIssueCustomField',
             name: fieldDef.field.name,
             value: {
               $type: 'StateBundleElement',
@@ -181,9 +185,21 @@ export class CustomFieldsManager {
               name: stateValue.name
             }
           };
+        } else if (fieldType.includes('user') || fieldType === 'user[1]' || fieldName.toLowerCase() === 'assignee') {
+          // User field (like assignee)
+          customFieldValue = {
+            id: fieldDef.field.id,
+            $type: 'SingleUserIssueCustomField',
+            name: fieldDef.field.name,
+            value: typeof value === 'string' ? {
+              $type: 'User',
+              login: value
+            } : value
+          };
         } else {
           // Default to simple field
           customFieldValue = {
+            id: fieldDef.field.id,
             $type: 'SimpleIssueCustomField',
             name: fieldDef.field.name,
             value: value.toString()

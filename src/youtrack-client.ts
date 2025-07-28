@@ -645,7 +645,7 @@ export class YouTrackClient {
             if (params.assignee) issueData.assignee = { login: params.assignee };
           } else {
             // Convert to proper custom fields format
-            const customFields = this.customFieldsManager.convertToCustomFields(projectId, fieldMappings);
+            const customFields = await this.customFieldsManager.convertToCustomFields(projectId, fieldMappings);
 
             // Validate custom fields
             const validation = await this.customFieldsManager.validateCustomFields(projectId, customFields);
@@ -1017,7 +1017,8 @@ export class YouTrackClient {
       logger.info('Updating issue with proper custom fields structure', { 
         issueId, 
         projectId,
-        customFieldsCount: updateData.customFields?.length || 0 
+        customFieldsCount: updateData.customFields?.length || 0,
+        updateData: JSON.stringify(updateData, null, 2)
       });
 
       const response = await this.api.post(`/issues/${issueId}`, updateData, {
@@ -4362,21 +4363,29 @@ export class YouTrackClient {
     resolution?: string;
   }): Promise<MCPResponse> {
     try {
-      logApiCall('POST', `/issues/${params.issueId}`, { state: params.newState });
+      logApiCall('POST', `/commands`, { command: params.newState, issueId: params.issueId });
 
-      const updates: any = { state: params.newState };
-      
-      if (params.resolution) {
-        updates.resolution = params.resolution;
-      }
-      
-      // Update the issue state
-      const response = await this.updateIssue(params.issueId, updates);
-      
-      // Add a comment if provided
+      // Use YouTrack's command API for state changes
+      const commandData: any = {
+        query: params.newState,
+        issues: [
+          {
+            idReadable: params.issueId
+          }
+        ]
+      };
+
+      // Add comment if provided
       if (params.comment) {
-        await this.addIssueComment(params.issueId, params.comment);
+        commandData.comment = params.comment;
       }
+
+      // Execute the command to change state
+      const response = await this.api.post(`/commands`, commandData, {
+        params: {
+          fields: 'issues(id,idReadable,customFields(id,name,value(name,id,isResolved))),query',
+        },
+      });
       
       return {
         content: [{
@@ -4386,7 +4395,9 @@ export class YouTrackClient {
             message: `Issue ${params.issueId} state changed to "${params.newState}"${params.comment ? ' with comment' : ''}`,
             newState: params.newState,
             issueId: params.issueId,
-            resolution: params.resolution
+            resolution: params.resolution,
+            commandExecuted: commandData.query,
+            result: response.data
           }, null, 2),
         }],
       };
@@ -4416,14 +4427,23 @@ export class YouTrackClient {
         resolution
       });
       
-      // Log time if provided
+      // Log time if provided (handle permissions gracefully)
+      let timeLoggedSuccessfully = false;
+      let timeLogError = null;
       if (params.logTime) {
-        await this.logWorkTime({
-          issueId: params.issueId,
-          duration: params.logTime,
-          description: 'Completion work',
-          date: new Date().toISOString().split('T')[0]
-        });
+        try {
+          await this.logWorkTime({
+            issueId: params.issueId,
+            duration: params.logTime,
+            description: 'Completion work',
+            date: new Date().toISOString().split('T')[0]
+          });
+          timeLoggedSuccessfully = true;
+        } catch (timeError) {
+          // Handle time logging errors gracefully (e.g., permissions issues)
+          timeLogError = getErrorMessage(timeError);
+          console.warn(`Time logging failed for issue ${params.issueId}: ${timeLogError}`);
+        }
       }
       
       return {
@@ -4434,7 +4454,9 @@ export class YouTrackClient {
             message: `Issue ${params.issueId} marked as completed`,
             state: 'Done',
             resolution,
-            timeLogged: params.logTime || null
+            timeLogged: timeLoggedSuccessfully ? params.logTime : null,
+            timeLogError: timeLogError,
+            note: timeLogError ? 'Issue completed successfully, but time logging failed (possibly due to permissions)' : undefined
           }, null, 2),
         }],
       };

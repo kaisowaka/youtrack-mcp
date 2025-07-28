@@ -385,7 +385,7 @@ PERFECT FOR: Learning YouTrack query syntax, discovering available fields, under
         },
         logTime: {
           type: 'string',
-          description: 'Time spent on completion (e.g., "2h", "1d", "30m") - optional',
+          description: 'Time spent on completion (e.g., "2h", "1d", "30m") - optional. Note: May fail due to permissions but issue completion will still succeed.',
         },
       },
       required: ['issueId'],
