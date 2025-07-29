@@ -443,10 +443,12 @@ export class YouTrackClient {
       if (foundProject) {
         // Project exists, now check if we can access its issues
         try {
-          logApiCall('GET', '/issues', { query: `project: ${projectId}` });
+          // Use the shortName for queries as it's more reliable than internal IDs
+          const queryProject = foundProject.shortName || foundProject.id;
+          logApiCall('GET', '/issues', { query: `project: ${queryProject}` });
           const issuesResponse = await this.api.get('/issues', {
             params: {
-              query: `project: ${projectId}`,
+              query: `project: ${queryProject}`,
               fields: 'id',
               '$top': 1
             }
@@ -462,16 +464,32 @@ export class YouTrackClient {
           this.cache.set(cacheKey, result, 60000); // Cache for 1 minute
           return result;
         } catch (issueError) {
-          // Can't access issues, but project exists
-          const result = {
-            exists: true,
-            accessible: false,
-            project: foundProject,
-            message: `Project '${projectId}' exists but you may not have access to its issues`,
-            suggestions: ['Check your project permissions', 'Contact project administrator']
-          };
-          this.cache.set(cacheKey, result, 60000);
-          return result;
+          // If query fails, try simpler validation - just check if we can get project details
+          try {
+            logApiCall('GET', `/admin/projects/${foundProject.id}`, {});
+            await this.api.get(`/admin/projects/${foundProject.id}`);
+            
+            const result = {
+              exists: true,
+              accessible: true, // If we can get project details, assume accessible
+              project: foundProject,
+              message: `Project '${projectId}' is valid and accessible`
+            };
+
+            this.cache.set(cacheKey, result, 60000);
+            return result;
+          } catch (adminError) {
+            // Can't access issues or project details
+            const result = {
+              exists: true,
+              accessible: false,
+              project: foundProject,
+              message: `Project '${projectId}' exists but you may not have access to its issues`,
+              suggestions: ['Check your project permissions', 'Contact project administrator']
+            };
+            this.cache.set(cacheKey, result, 60000);
+            return result;
+          }
         }
       } else {
         const result = {
