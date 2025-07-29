@@ -4637,16 +4637,27 @@ export class YouTrackClient {
       logApiCall('POST', `/commands`, { command: params.newState, issueId: params.issueId });
 
       // Use YouTrack's command API for state changes
+      // Try different command formats that might work
+      let commandQuery: string;
+      
+      // Try the simple format first
+      if (params.newState.toLowerCase() === 'done' || params.newState.toLowerCase() === 'fixed') {
+        commandQuery = params.newState; // Just the state name
+      } else {
+        commandQuery = `State ${params.newState}`; // With "State" prefix
+      }
+      
+      // Add comment separately using the comment field (not in command)
       const commandData: any = {
-        query: params.newState,
+        query: commandQuery,
         issues: [
           {
             idReadable: params.issueId
           }
         ]
       };
-
-      // Add comment if provided
+      
+      // Add comment as separate field if provided
       if (params.comment) {
         commandData.comment = params.comment;
       }
@@ -4667,12 +4678,21 @@ export class YouTrackClient {
             newState: params.newState,
             issueId: params.issueId,
             resolution: params.resolution,
-            commandExecuted: commandData.query,
+            commandExecuted: commandQuery,
             result: response.data
           }, null, 2),
         }],
       };
     } catch (error) {
+      // Log the full error details for debugging
+      console.error('State change error details:', {
+        issueId: params.issueId,
+        newState: params.newState,
+        error: error,
+        errorMessage: getErrorMessage(error),
+        errorResponse: (error as any)?.response?.data
+      });
+      
       logError(error as Error, { method: 'changeIssueState', params });
       throw new Error(`Failed to change issue state: ${getErrorMessage(error)}`);
     }
@@ -4690,13 +4710,32 @@ export class YouTrackClient {
     try {
       const resolution = params.resolution || 'Fixed';
       
-      // First, mark as completed
-      await this.changeIssueState({
-        issueId: params.issueId,
-        newState: 'Done',
-        comment: params.completionComment || `Issue completed with resolution: ${resolution}`,
-        resolution
-      });
+      // Try different completion states in order of preference
+      const possibleCompletionStates = ['Fixed', 'Done', 'Resolved', 'Closed', 'Complete'];
+      let stateChangeSuccess = false;
+      let lastError: any;
+      
+      for (const state of possibleCompletionStates) {
+        try {
+          await this.changeIssueState({
+            issueId: params.issueId,
+            newState: state,
+            comment: params.completionComment || `Issue completed with resolution: ${resolution}`,
+            resolution
+          });
+          stateChangeSuccess = true;
+          console.log(`✅ Successfully changed issue ${params.issueId} to state: ${state}`);
+          break;
+        } catch (error) {
+          lastError = error;
+          console.log(`❌ Failed to change issue ${params.issueId} to state: ${state}, trying next...`);
+          continue;
+        }
+      }
+      
+      if (!stateChangeSuccess) {
+        throw new Error(`Failed to change issue state to any completion state: ${getErrorMessage(lastError)}`);
+      }
       
       // Log time if provided (handle permissions gracefully)
       let timeLoggedSuccessfully = false;
@@ -4754,30 +4793,71 @@ export class YouTrackClient {
         project = issue.data.project.shortName;
       }
       
-      // Get available states for the project
-      const statesResponse = await this.api.get(`/admin/projects/${project}/customFields/State`, {
-        params: { fields: 'bundle(values(name,description))' }
-      });
+      // Get available states from the project's State field bundle
+      let statesResponse;
+      try {
+        // Try the new API format first
+        statesResponse = await this.api.get(`/admin/projects/${project}/customFields/State/bundle`, {
+          params: { fields: 'values(name,description)' }
+        });
+      } catch (error) {
+        // Fallback to the older API format
+        statesResponse = await this.api.get(`/admin/projects/${project}/customFields`, {
+          params: { 
+            fields: 'customFields(field(name),bundle(values(name,description)))',
+            query: 'name:State'
+          }
+        });
+      }
       
       const currentIssue = await this.api.get(`/issues/${params.issueId}`, {
-        params: { fields: 'state(name)' }
+        params: { fields: 'customFields(name,value(name))' }
       });
+      
+      // Find the current state
+      const stateField = currentIssue.data.customFields?.find((f: any) => f.name === 'State');
+      const currentState = stateField?.value?.name || 'Unknown';
+      
+      // Extract available states
+      let availableStates: any[] = [];
+      if (statesResponse.data.values) {
+        // Direct bundle response
+        availableStates = statesResponse.data.values;
+      } else if (statesResponse.data.customFields) {
+        // Project custom fields response
+        const stateFieldConfig = statesResponse.data.customFields.find((f: any) => f.field?.name === 'State');
+        availableStates = stateFieldConfig?.bundle?.values || [];
+      }
       
       return {
         content: [{
           type: 'text',
           text: JSON.stringify({
-            currentState: currentIssue.data.state?.name || 'Unknown',
-            availableStates: statesResponse.data.bundle?.values?.map((v: any) => ({
+            currentState,
+            availableStates: Array.isArray(availableStates) ? availableStates.map((v: any) => ({
               name: v.name,
               description: v.description || ''
-            })) || [],
+            })) : [],
             issueId: params.issueId,
-            projectId: project
+            projectId: project,
+            debug: {
+              statesResponseData: availableStates,
+              statesResponseType: typeof availableStates,
+              isArray: Array.isArray(availableStates)
+            }
           }, null, 2),
         }],
       };
     } catch (error) {
+      // Log the full error details for debugging
+      console.error('Workflow states error details:', {
+        issueId: params.issueId,
+        projectId: params.projectId,
+        error: error,
+        errorMessage: getErrorMessage(error),
+        errorResponse: (error as any)?.response?.data
+      });
+      
       logError(error as Error, { method: 'getIssueWorkflowStates', params });
       throw new Error(`Failed to get workflow states: ${getErrorMessage(error)}`);
     }
