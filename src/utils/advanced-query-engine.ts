@@ -219,17 +219,18 @@ export class AdvancedQueryEngine {
 
   /**
    * Escape special characters in query values
-   * Note: YouTrack doesn't support quoted state values, so we filter out invalid states
+   * Note: YouTrack doesn't support quoted state or priority values
    */
   private escapeValue(value: any, fieldName?: string): string {
     const str = String(value);
     
-    // Special handling for state fields - YouTrack doesn't support quoted state values
-    if (fieldName?.toLowerCase() === 'state') {
+    // Special handling for state and priority fields - YouTrack doesn't support quoted values
+    if (fieldName?.toLowerCase() === 'state' || fieldName?.toLowerCase() === 'priority') {
       // Only allow states without spaces since YouTrack can't query states with spaces
-      if (str.includes(' ')) {
+      if (fieldName?.toLowerCase() === 'state' && str.includes(' ')) {
         throw new Error(`State values with spaces (like "${str}") cannot be queried in YouTrack. Use states without spaces like: Open, Done, Duplicate`);
       }
+      // Priority values like "Show-stopper" are valid and should not be quoted
       return str;
     }
     
