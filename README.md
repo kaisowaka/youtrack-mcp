@@ -44,7 +44,7 @@ A comprehensive **Model Context Protocol (MCP)** server that provides full YouTr
 ### **Installation**
 ```bash
 # Clone the repository
-git clone https://github.com/itsalfredakku/youtrack-mcp-ts.git
+git clone https://github.com/itsalfredakku/youtrack-mcp.git
 cd youtrack-mcp-ts
 
 # Install dependencies
