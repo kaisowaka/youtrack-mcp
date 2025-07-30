@@ -4,7 +4,7 @@ A comprehensive **Model Context Protocol (MCP)** server that provides full YouTr
 
 ## 🎯 **Enterprise-Ready Project Management**
 
-**73+ Professional Tools** for complete YouTrack integration, from basic issue management to advanced project analytics with Gantt charts, dependency management, and critical path analysis.
+**71 Professional Tools** for complete YouTrack integration, from basic issue management to advanced project analytics with Gantt charts, dependency management, and critical path analysis.
 
 ## ✨ **Key Capabilities**
 
@@ -61,11 +61,11 @@ npm start
 
 ### **Quick Validation**
 ```bash
-# Test connection and basic functionality
-npm run test
+# Test connection and YouTrack query functionality
+npm test
 
-# Validate specific project access
-npm run validate-content issue "Test Issue" "Test description"
+# Test specific query patterns
+npm run test:queries
 ```
 
 ## ⚙️ **Configuration**
@@ -103,7 +103,7 @@ Add to your MCP client configuration (e.g., Claude Desktop, Cline):
 }
 ```
 
-## 🛠️ **Available Tools** (73+ Professional Tools)
+## 🛠️ **Available Tools** (71 Professional Tools)
 
 ### **🔍 Core Issue Management** (15 tools)
 - `query_issues` - Basic YouTrack query syntax with performance optimization
@@ -341,10 +341,9 @@ npm run build           # Build for production
 npm start              # Start production server
 
 # Testing & Validation
-npm run test           # Run integration tests
-npm run test:simple    # Quick connection test
-npm run test:tags      # Test article tagging functionality
-npm run validate-content  # Content validation utility
+npm run test           # Run query functionality tests
+npm run test:queries   # Test YouTrack query patterns
+npm run verify-build   # Verify build integrity
 
 # Code Quality
 npm run lint           # ESLint code analysis
@@ -356,7 +355,7 @@ npm clean             # Clean build artifacts
 ```
 src/
 ├── index.ts              # MCP server entry point
-├── youtrack-client.ts    # Core API client with 73+ methods
+├── youtrack-client.ts    # Core API client with 71 methods
 ├── tools.ts             # Tool definitions and schemas
 ├── config.ts            # Environment configuration
 ├── logger.ts            # Structured logging system
@@ -377,10 +376,58 @@ src/
 - **[API References](./docs/api-references.md)** - Technical API documentation
 
 ### **Support & Troubleshooting**
+
+#### **Common Issues & Solutions**
+
+**🔴 Invalid Query Errors (400)**
+```
+Error: YouTrack API Error (400): invalid_query
+```
+- **Cause**: Invalid YouTrack query syntax or unsupported field references
+- **Solutions**:
+  - Use `get_query_suggestions` tool to learn proper syntax
+  - Avoid queries with states containing spaces (use "Open" not "In Progress") 
+  - Validate project IDs with `validate_project` before querying
+  - Use `discover_project_fields` to check available fields
+
+**🔴 Server Errors (500)**
+```
+Error: YouTrack API Error (500): server_error
+```
+- **Cause**: Server-side issues or invalid data submissions
+- **Solutions**:
+  - Check field values with `get_project_field_values`
+  - Ensure required fields are provided for issue creation
+  - Verify project permissions with `validate_project`
+  - Retry operation after brief delay
+
+**🔴 Project Not Found Errors**
+```
+Error: Project 'PROJECT-ID' not found
+```
+- **Cause**: Invalid project ID or insufficient permissions
+- **Solutions**:
+  - Use `list_projects` to see available projects
+  - Check PROJECT_ID environment variable
+  - Verify token has access to the project
+
+**🔴 Tool Count Mismatch**
+```
+Logs show: "Discovered 71 tools" but README claims different number
+```
+- **Solution**: Tool count is now correctly updated to **71 tools**
+
+#### **Best Practices**
 - **Environment Issues**: Check token permissions and YouTrack connectivity
 - **Query Failures**: Use `get_query_suggestions` for syntax help
 - **Performance**: Enable caching and use pagination for large datasets
 - **Field Errors**: Run `discover_project_fields` to validate available fields
+
+#### **Debug Steps**
+1. **Connection Test**: `npm test`
+2. **Project Validation**: Use `validate_project` tool
+3. **Field Discovery**: Use `discover_project_fields` for available fields
+4. **Query Testing**: Start with simple queries before complex ones
 
 ## 🤝 **Contributing**
 
@@ -404,7 +451,7 @@ MIT License - see [LICENSE](./LICENSE) for details.
 ## 🏆 **Production Ready**
 
 This YouTrack MCP Server is **production-ready** with:
-- ✅ **73+ Professional Tools** covering all YouTrack functionality
+- ✅ **71 Professional Tools** covering all YouTrack functionality
 - ✅ **Enterprise Security** with non-admin API access patterns
 - ✅ **Advanced Analytics** including Gantt charts and critical path analysis
 - ✅ **Comprehensive Testing** with automated validation
