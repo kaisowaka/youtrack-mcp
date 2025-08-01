@@ -1,7 +1,7 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import axiosRetry from 'axios-retry';
 import { logger, logApiCall, logError } from '../../logger.js';
-import { SimpleCache } from '../../cache.js';
+import { CacheManager } from './cache-manager.js';
 
 export interface MCPResponse {
   content: Array<{
