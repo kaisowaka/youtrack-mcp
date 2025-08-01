@@ -23,7 +23,7 @@ dotenv.config();
 const streamlinedToolDefinitions = [
   // PROJECT MANAGEMENT TOOLS
   {
-    name: 'projects_manage',
+    name: 'youtrack_projects_manage',
     description: '🏗️  Comprehensive project management: list, get details, validate, get custom fields, and manage project configurations',
     inputSchema: {
       type: 'object',
@@ -49,7 +49,7 @@ const streamlinedToolDefinitions = [
 
   // ISSUE MANAGEMENT TOOLS  
   {
-    name: 'issues_manage',
+    name: 'youtrack_issues_manage',
     description: '🎯 Complete issue lifecycle management: create, update, query, state changes, comments, and advanced operations',
     inputSchema: {
       type: 'object',
@@ -104,9 +104,35 @@ const streamlinedToolDefinitions = [
     }
   },
 
-  // COMMENTS MANAGEMENT
+  // ADVANCED QUERY TOOL
   {
-    name: 'comments_manage',
+    name: 'youtrack_query_issues',
+    description: '🔍 Basic YouTrack query using raw YouTrack syntax (for advanced users familiar with YouTrack query language)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'YouTrack query syntax string. Examples:\n• "state: Open" - All open issues\n• "project: PROJECT-1 assignee: me" - My issues in project\n• "priority: High created: >2025-01-01" - High priority recent issues\n• "#bug -state: Resolved" - Open bugs (full-text search)'
+        },
+        fields: {
+          type: 'string',
+          description: 'Comma-separated field names to return. Example: "id,summary,state,priority" or "id,summary,description,assignee,created"',
+          default: 'id,summary,description,state,priority,reporter,assignee'
+        },
+        limit: {
+          type: 'integer',
+          description: 'Maximum number of issues to return (1-1000, default: 50)',
+          default: 50
+        }
+      },
+      required: ['query']
+    }
+  },
+
+    // COMMENT MANAGEMENT TOOLS
+  {
+    name: 'youtrack_comments_manage',
     description: '💬 Issue comments management: get, add, update, delete comments',
     inputSchema: {
       type: 'object',
@@ -133,9 +159,9 @@ const streamlinedToolDefinitions = [
     }
   },
 
-  // AGILE MANAGEMENT
+  // AGILE MANAGEMENT TOOLS
   {
-    name: 'agile_manage',
+    name: 'youtrack_agile_manage',
     description: '🏃‍♂️ Agile board and sprint management: boards, sprints, assignments, and progress tracking',
     inputSchema: {
       type: 'object',
@@ -178,9 +204,9 @@ const streamlinedToolDefinitions = [
     }
   },
 
-  // KNOWLEDGE BASE
+  // KNOWLEDGE MANAGEMENT TOOLS
   {
-    name: 'knowledge_manage',
+    name: 'youtrack_knowledge_manage',
     description: '📚 Knowledge base management: articles, search, create, update, organize',
     inputSchema: {
       type: 'object',
@@ -226,7 +252,7 @@ const streamlinedToolDefinitions = [
 
   // ANALYTICS & REPORTING
   {
-    name: 'analytics_report',
+    name: 'youtrack_analytics_report',
     description: '📊 Advanced analytics and reporting: project statistics, time tracking, progress reports, Gantt charts',
     inputSchema: {
       type: 'object',
@@ -263,7 +289,7 @@ const streamlinedToolDefinitions = [
 
   // ADMIN OPERATIONS
   {
-    name: 'admin_operations',
+    name: 'youtrack_admin_operations',
     description: '⚙️  Administrative operations: user management, project setup, system configuration',
     inputSchema: {
       type: 'object',
@@ -375,25 +401,28 @@ class StreamlinedYouTrackMCPServer {
         const client = this.clientFactory.createClient();
         
         switch (name) {
-          case 'projects_manage':
+          case 'youtrack_projects_manage':
             return await this.handleProjectsManage(client, args);
           
-          case 'issues_manage':
+          case 'youtrack_issues_manage':
             return await this.handleIssuesManage(client, args);
           
-          case 'comments_manage':
+          case 'youtrack_query_issues':
+            return await this.handleQueryIssues(client, args);
+          
+          case 'youtrack_comments_manage':
             return await this.handleCommentsManage(client, args);
           
-          case 'agile_manage':
+          case 'youtrack_agile_manage':
             return await this.handleAgileManage(client, args);
           
-          case 'knowledge_manage':
+          case 'youtrack_knowledge_manage':
             return await this.handleKnowledgeManage(client, args);
           
-          case 'analytics_report':
+          case 'youtrack_analytics_report':
             return await this.handleAnalyticsReport(client, args);
           
-          case 'admin_operations':
+          case 'youtrack_admin_operations':
             return await this.handleAdminOperations(client, args);
           
           default:
@@ -463,6 +492,15 @@ class StreamlinedYouTrackMCPServer {
       default:
         throw new Error(`Unknown issues action: ${action}`);
     }
+  }
+
+  private async handleQueryIssues(client: any, args: any) {
+    const { query, fields, limit } = args;
+    return await client.issues.queryIssues({ 
+      query, 
+      fields: fields ? fields.split(',') : ['id', 'summary', 'description', 'state', 'priority', 'reporter', 'assignee'],
+      limit: limit || 50
+    });
   }
 
   private async handleCommentsManage(client: any, args: any) {

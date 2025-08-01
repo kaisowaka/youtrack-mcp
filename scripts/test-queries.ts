@@ -33,13 +33,14 @@ async function buildVerificationTest() {
     console.log('   ✅ Ready for MCP deployment');
     
     console.log('\n📋 Available MCP Tools:');
-    console.log('   1. mcp_youtrack_projects_manage - Project operations');
-    console.log('   2. mcp_youtrack_issues_manage - Issue lifecycle');
-    console.log('   3. mcp_youtrack_query_issues - Advanced querying');
-    console.log('   4. mcp_youtrack_agile_manage - Sprint management');
-    console.log('   5. mcp_youtrack_comments_manage - Comment operations');
-    console.log('   6. mcp_youtrack_knowledge_manage - Knowledge base');
-    console.log('   7. mcp_youtrack_analytics_report - Analytics & reporting');
+    console.log('   1. youtrack_projects_manage - Project operations');
+    console.log('   2. youtrack_issues_manage - Issue lifecycle');
+    console.log('   3. youtrack_query_issues - Advanced querying');
+    console.log('   4. youtrack_agile_manage - Sprint management');
+    console.log('   5. youtrack_comments_manage - Comment operations');
+    console.log('   6. youtrack_knowledge_manage - Knowledge base');
+    console.log('   7. youtrack_analytics_report - Analytics & reporting');
+    console.log('   8. youtrack_admin_operations - Administrative operations');
 }
 
 buildVerificationTest().catch(console.error);
