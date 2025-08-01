@@ -1,5 +1,5 @@
 import { AxiosInstance } from 'axios';
-import { logger, logApiCall, logError } from '../logger.js';
+import { logApiCall, logError } from '../logger.js';
 import { FieldSelector } from '../field-selector.js';
 import { MCPResponse } from '../youtrack-client.js';
 

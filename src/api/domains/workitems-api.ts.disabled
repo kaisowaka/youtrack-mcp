@@ -1,0 +1,455 @@
+import { EnhancedBaseAPIClient, MCPResponse, YouTrackConfig } from '../base/enhanced-base-client.js';
+import { ResponseFormatter } from '../base/response-formatter.js';
+
+export interface WorkItem {
+  id: string;
+  issue?: {
+    id: string;
+    summary: string;
+    project?: {
+      id: string;
+      name: string;
+      shortName: string;
+    };
+  };
+  author?: {
+    id: string;
+    login: string;
+    fullName?: string;
+  };
+  date: number; // timestamp
+  duration: number; // minutes
+  description?: string;
+  type?: {
+    id: string;
+    name: string;
+  };
+  created: number; // timestamp
+  updated: number; // timestamp
+}
+
+export interface TimeTrackingReport {
+  workItems: WorkItem[];
+  totalDuration: number; // minutes
+  groupedBy?: string;
+  period?: {
+    start: string;
+    end: string;
+  };
+  summary?: {
+    totalHours: number;
+    totalDays: number;
+    averagePerDay: number;
+  };
+}
+
+export interface CreateWorkItemParams {
+  issueId: string;
+  duration: string; // e.g., "2h 30m", "1d", "45m"
+  description?: string;
+  date?: string; // YYYY-MM-DD format
+  workType?: string;
+}
+
+export interface TimeTrackingQueryParams {
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  projectId?: string;
+  userId?: string;
+  groupBy?: 'user' | 'issue' | 'date' | 'workType';
+  includeDetails?: boolean;
+}
+
+/**
+ * WorkItems API Client - Manages time tracking and work item operations
+ * Handles the 4 missing work item endpoints identified in coverage analysis
+ */
+export class WorkItemsAPIClient extends EnhancedBaseAPIClient {
+  
+  constructor(config: YouTrackConfig) {
+    super(config);
+  }
+
+  /**
+   * Parse duration string to minutes
+   * Supports formats like "2h 30m", "1.5h", "90m", "1d"
+   */
+  private parseDurationToMinutes(duration: string): number {
+    const durationStr = duration.toLowerCase().trim();
+    let totalMinutes = 0;
+
+    // Handle days (1d = 8 hours = 480 minutes)
+    const daysMatch = durationStr.match(/(\d*\.?\d+)d/);
+    if (daysMatch) {
+      totalMinutes += parseFloat(daysMatch[1]) * 480; // 8 hours per day
+    }
+
+    // Handle hours (2h or 2.5h)
+    const hoursMatch = durationStr.match(/(\d*\.?\d+)h/);
+    if (hoursMatch) {
+      totalMinutes += parseFloat(hoursMatch[1]) * 60;
+    }
+
+    // Handle minutes (30m)
+    const minutesMatch = durationStr.match(/(\d+)m/);
+    if (minutesMatch) {
+      totalMinutes += parseInt(minutesMatch[1]);
+    }
+
+    // If no units found, assume minutes
+    if (totalMinutes === 0 && /^\d+$/.test(durationStr)) {
+      totalMinutes = parseInt(durationStr);
+    }
+
+    return totalMinutes;
+  }
+
+  /**
+   * Format minutes to human readable duration
+   */
+  private formatMinutesToDuration(minutes: number): string {
+    if (minutes < 60) {
+      return `${minutes}m`;
+    }
+    
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    
+    if (remainingMinutes === 0) {
+      return `${hours}h`;
+    }
+    
+    return `${hours}h ${remainingMinutes}m`;
+  }
+
+  /**
+   * List work items with filtering and grouping
+   * GET /workItems
+   */
+  async listWorkItems(params: {
+    startDate?: string;
+    endDate?: string;
+    issueId?: string;
+    userId?: string;
+    projectId?: string;
+    limit?: number;
+  } = {}): Promise<MCPResponse> {
+    try {
+      const queryParams: any = {};
+      
+      // Build query parameters
+      if (params.startDate || params.endDate) {
+        let query = '';
+        if (params.startDate) query += `created: ${params.startDate}..`;
+        if (params.endDate) query += `${params.endDate}`;
+        if (query) queryParams.query = query;
+      }
+      
+      if (params.issueId) {
+        queryParams.query = (queryParams.query || '') + ` issue: ${params.issueId}`;
+      }
+      
+      if (params.userId) {
+        queryParams.query = (queryParams.query || '') + ` author: ${params.userId}`;
+      }
+
+      if (params.limit) {
+        queryParams['$top'] = params.limit;
+      }
+
+      const fieldsParam = 'id,issue(id,summary,project(id,name,shortName)),author(id,login,fullName),date,duration,description,type(id,name),created,updated';
+
+      const workItems = await this.getCached<WorkItem[]>(
+        '/workItems',
+        { ...queryParams, fields: fieldsParam },
+        `workitems:${JSON.stringify(params)}`,
+        300000 // 5 minute cache
+      );
+
+      // Calculate summary statistics
+      const totalDuration = workItems.reduce((sum, item) => sum + item.duration, 0);
+      const summary = {
+        totalItems: workItems.length,
+        totalDuration: totalDuration,
+        totalHours: Math.round((totalDuration / 60) * 100) / 100,
+        totalDays: Math.round((totalDuration / 480) * 100) / 100,
+        formattedDuration: this.formatMinutesToDuration(totalDuration)
+      };
+
+      // Group by project if multiple projects
+      const projectGroups = workItems.reduce((groups: any, item) => {
+        const projectKey = item.issue?.project?.shortName || 'Unknown';
+        if (!groups[projectKey]) {
+          groups[projectKey] = { items: [], duration: 0 };
+        }
+        groups[projectKey].items.push(item);
+        groups[projectKey].duration += item.duration;
+        return groups;
+      }, {});
+
+      return this.formatSuccessResponse({
+        workItems,
+        summary,
+        projectGroups,
+        cached: true
+      }, `Found ${workItems.length} work item${workItems.length !== 1 ? 's' : ''} (${summary.formattedDuration} total)`);
+
+    } catch (error: any) {
+      return this.formatErrorResponse(
+        `Failed to list work items: ${error.message}`,
+        { method: 'listWorkItems', params }
+      );
+    }
+  }
+
+  /**
+   * Get detailed information about a specific work item
+   * GET /workItems/{workItemId}
+   */
+  async getWorkItemDetails(workItemId: string): Promise<MCPResponse> {
+    try {
+      const fieldsParam = 'id,issue(id,summary,project(id,name,shortName),state(name)),author(id,login,fullName),date,duration,description,type(id,name),created,updated';
+
+      const workItem = await this.getCached<WorkItem>(
+        `/workItems/${workItemId}`,
+        { fields: fieldsParam },
+        `workitem:${workItemId}`,
+        300000 // 5 minute cache
+      );
+
+      // Enhance with computed information
+      const enhanced = {
+        ...workItem,
+        formattedDuration: this.formatMinutesToDuration(workItem.duration),
+        formattedDate: new Date(workItem.date).toLocaleDateString(),
+        formattedCreated: new Date(workItem.created).toLocaleString(),
+        formattedUpdated: new Date(workItem.updated).toLocaleString()
+      };
+
+      return this.formatSuccessResponse({
+        workItem: enhanced,
+        cached: true
+      }, `Retrieved work item details: ${enhanced.formattedDuration} on ${enhanced.formattedDate}`);
+
+    } catch (error: any) {
+      return this.formatErrorResponse(
+        `Failed to get work item details: ${error.message}`,
+        { method: 'getWorkItemDetails', workItemId }
+      );
+    }
+  }
+
+  /**
+   * Create a new work item (log time)
+   * POST /workItems
+   */
+  async createWorkItem(params: CreateWorkItemParams): Promise<MCPResponse> {
+    try {
+      const duration = this.parseDurationToMinutes(params.duration);
+      const workDate = params.date ? new Date(params.date) : new Date();
+      
+      const workItemData: any = {
+        issue: { id: params.issueId },
+        duration: duration,
+        date: workDate.getTime(),
+        description: params.description || ''
+      };
+
+      if (params.workType) {
+        workItemData.type = { name: params.workType };
+      }
+
+      const workItem = await this.post<WorkItem>(
+        '/workItems',
+        workItemData,
+        { fields: 'id,issue(id,summary),duration,date,description,type(name)' }
+      );
+
+      // Clear cache to ensure fresh data
+      this.clearCache();
+
+      const formattedDuration = this.formatMinutesToDuration(duration);
+      const formattedDate = workDate.toLocaleDateString();
+
+      return this.formatSuccessResponse({
+        workItem,
+        created: true,
+        formattedDuration,
+        formattedDate
+      }, `Logged ${formattedDuration} of work on ${formattedDate} for issue ${params.issueId}`);
+
+    } catch (error: any) {
+      return this.formatErrorResponse(
+        `Failed to create work item: ${error.message}`,
+        { method: 'createWorkItem', params }
+      );
+    }
+  }
+
+  /**
+   * Get time tracking report with grouping and analysis
+   * Enhanced reporting functionality combining multiple endpoints
+   */
+  async getTimeTrackingReport(params: TimeTrackingQueryParams): Promise<MCPResponse> {
+    try {
+      // Build query for the specified period
+      let query = `created: ${params.startDate}..${params.endDate}`;
+      
+      if (params.projectId) {
+        query += ` project: ${params.projectId}`;
+      }
+      
+      if (params.userId) {
+        query += ` author: ${params.userId}`;
+      }
+
+      const fieldsParam = params.includeDetails 
+        ? 'id,issue(id,summary,project(id,name,shortName),state(name)),author(id,login,fullName),date,duration,description,type(id,name),created'
+        : 'id,issue(id,summary,project(shortName)),author(login),date,duration,type(name)';
+
+      const workItems = await this.getCached<WorkItem[]>(
+        '/workItems',
+        { query, fields: fieldsParam, '$top': 1000 },
+        `time_report:${JSON.stringify(params)}`,
+        300000 // 5 minute cache
+      );
+
+      // Process and group the data
+      const report = this.processTimeReport(workItems, params.groupBy || 'date');
+
+      // Calculate period summary
+      const totalDuration = workItems.reduce((sum, item) => sum + item.duration, 0);
+      const daysBetween = Math.ceil(
+        (new Date(params.endDate).getTime() - new Date(params.startDate).getTime()) / (1000 * 60 * 60 * 24)
+      ) + 1; // +1 to include both start and end dates
+
+      const summary = {
+        period: { start: params.startDate, end: params.endDate },
+        totalItems: workItems.length,
+        totalDuration: totalDuration,
+        totalHours: Math.round((totalDuration / 60) * 100) / 100,
+        totalDays: Math.round((totalDuration / 480) * 100) / 100,
+        averagePerDay: Math.round((totalDuration / daysBetween) * 100) / 100,
+        formattedDuration: this.formatMinutesToDuration(totalDuration),
+        workingDays: daysBetween,
+        groupedBy: params.groupBy || 'date'
+      };
+
+      return this.formatSuccessResponse({
+        report,
+        summary,
+        cached: true
+      }, `Time tracking report: ${summary.formattedDuration} over ${daysBetween} days`);
+
+    } catch (error: any) {
+      return this.formatErrorResponse(
+        `Failed to generate time tracking report: ${error.message}`,
+        { method: 'getTimeTrackingReport', params }
+      );
+    }
+  }
+
+  /**
+   * Get issue-specific time tracking information
+   * GET /issues/{issueId}/timeTracking (derived endpoint)
+   */
+  async getIssueTimeTracking(issueId: string): Promise<MCPResponse> {
+    try {
+      const fieldsParam = 'id,author(login,fullName),date,duration,description,type(name),created';
+
+      const workItems = await this.getCached<WorkItem[]>(
+        '/workItems',
+        { 
+          query: `issue: ${issueId}`,
+          fields: fieldsParam,
+          '$top': 100
+        },
+        `issue_time:${issueId}`,
+        300000 // 5 minute cache
+      );
+
+      // Calculate issue time summary
+      const totalDuration = workItems.reduce((sum, item) => sum + item.duration, 0);
+      
+      // Group by author
+      const authorGroups = workItems.reduce((groups: any, item) => {
+        const authorKey = item.author?.login || 'Unknown';
+        if (!groups[authorKey]) {
+          groups[authorKey] = { 
+            items: [], 
+            duration: 0,
+            fullName: item.author?.fullName 
+          };
+        }
+        groups[authorKey].items.push(item);
+        groups[authorKey].duration += item.duration;
+        return groups;
+      }, {});
+
+      const summary = {
+        issueId,
+        totalEntries: workItems.length,
+        totalDuration: totalDuration,
+        totalHours: Math.round((totalDuration / 60) * 100) / 100,
+        formattedDuration: this.formatMinutesToDuration(totalDuration),
+        contributors: Object.keys(authorGroups).length,
+        firstEntry: workItems.length > 0 ? new Date(Math.min(...workItems.map(w => w.date))).toLocaleDateString() : null,
+        lastEntry: workItems.length > 0 ? new Date(Math.max(...workItems.map(w => w.date))).toLocaleDateString() : null
+      };
+
+      return this.formatSuccessResponse({
+        workItems,
+        authorGroups,
+        summary,
+        cached: true
+      }, `Issue ${issueId} time tracking: ${summary.formattedDuration} from ${summary.contributors} contributor${summary.contributors !== 1 ? 's' : ''}`);
+
+    } catch (error: any) {
+      return this.formatErrorResponse(
+        `Failed to get issue time tracking: ${error.message}`,
+        { method: 'getIssueTimeTracking', issueId }
+      );
+    }
+  }
+
+  /**
+   * Process work items into grouped report format
+   */
+  private processTimeReport(workItems: WorkItem[], groupBy: string) {
+    const groups: any = {};
+
+    workItems.forEach(item => {
+      let groupKey: string;
+      
+      switch (groupBy) {
+        case 'user':
+          groupKey = item.author?.login || 'Unknown';
+          break;
+        case 'issue':
+          groupKey = item.issue?.id || 'Unknown';
+          break;
+        case 'workType':
+          groupKey = item.type?.name || 'Unknown';
+          break;
+        case 'date':
+        default:
+          groupKey = new Date(item.date).toLocaleDateString();
+          break;
+      }
+
+      if (!groups[groupKey]) {
+        groups[groupKey] = {
+          items: [],
+          totalDuration: 0,
+          formattedDuration: '0m'
+        };
+      }
+
+      groups[groupKey].items.push(item);
+      groups[groupKey].totalDuration += item.duration;
+      groups[groupKey].formattedDuration = this.formatMinutesToDuration(groups[groupKey].totalDuration);
+    });
+
+    return groups;
+  }
+}

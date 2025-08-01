@@ -1,0 +1,386 @@
+import { EnhancedBaseAPIClient, MCPResponse } from '../base/enhanced-base-client.js';
+import { ResponseFormatter } from '../base/response-formatter.js';
+
+export interface ArticleCreateParams {
+  title: string;
+  content: string;
+  summary?: string;
+  tags?: string[];
+  parentArticle?: string;
+  visibility?: 'public' | 'project' | 'private';
+  project?: string;
+}
+
+export interface ArticleUpdateParams {
+  title?: string;
+  content?: string;
+  summary?: string;
+  tags?: string[];
+  visibility?: 'public' | 'project' | 'private';
+}
+
+export interface ArticleSearchParams {
+  query?: string;
+  tags?: string[];
+  project?: string;
+  author?: string;
+  includeContent?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * Knowledge Base API Client - Handles article and documentation operations
+ * Covers 15 endpoints from OpenAPI specification for knowledge management
+ */
+export class KnowledgeBaseAPIClient extends EnhancedBaseAPIClient {
+
+  /**
+   * Create a new knowledge base article
+   */
+  async createArticle(params: ArticleCreateParams): Promise<MCPResponse> {
+    const endpoint = '/api/articles';
+    
+    const articleData = {
+      summary: params.title, // YouTrack uses 'summary' for article title
+      content: params.content,
+      description: params.summary || '',
+      tags: params.tags?.map(tag => ({ name: tag })) || [],
+      parentArticle: params.parentArticle ? { id: params.parentArticle } : undefined,
+      visibility: params.visibility || 'public',
+      project: params.project ? { shortName: params.project } : undefined
+    };
+
+    const response = await this.post(endpoint, articleData);
+    return ResponseFormatter.formatCreated(response.data, 'Article', 
+      `Article "${params.title}" created successfully`);
+  }
+
+  /**
+   * Get article by ID with full content
+   */
+  async getArticle(articleId: string, includeComments: boolean = false): Promise<MCPResponse> {
+    const endpoint = `/api/articles/${articleId}`;
+    const params = {
+      fields: includeComments 
+        ? 'id,summary,content,description,created,updated,author(login,name),tags(name),parentArticle(id,summary),childArticles(id,summary),project(shortName,name),comments(id,text,created,author(login,name))'
+        : 'id,summary,content,description,created,updated,author(login,name),tags(name),parentArticle(id,summary),childArticles(id,summary),project(shortName,name)'
+    };
+
+    const response = await this.get(endpoint, params);
+    const article = response.data;
+
+    // Add hierarchy information
+    const hierarchyInfo = {
+      hasParent: !!article.parentArticle,
+      hasChildren: article.childArticles?.length > 0,
+      childrenCount: article.childArticles?.length || 0
+    };
+
+    return ResponseFormatter.formatSuccess({
+      ...article,
+      hierarchyInfo,
+      wordCount: article.content ? article.content.split(/\s+/).length : 0
+    }, `Retrieved article ${articleId}`);
+  }
+
+  /**
+   * Update existing article
+   */
+  async updateArticle(articleId: string, updates: ArticleUpdateParams): Promise<MCPResponse> {
+    const endpoint = `/api/articles/${articleId}`;
+    
+    const updateData: any = {};
+    if (updates.title) updateData.summary = updates.title;
+    if (updates.content !== undefined) updateData.content = updates.content;
+    if (updates.summary !== undefined) updateData.description = updates.summary;
+    if (updates.tags) updateData.tags = updates.tags.map(tag => ({ name: tag }));
+    if (updates.visibility) updateData.visibility = updates.visibility;
+
+    const response = await this.post(endpoint, updateData);
+    return ResponseFormatter.formatUpdated(response.data, 'Article', updates, 
+      `Article ${articleId} updated successfully`);
+  }
+
+  /**
+   * Delete article
+   */
+  async deleteArticle(articleId: string): Promise<MCPResponse> {
+    const endpoint = `/api/articles/${articleId}`;
+    
+    await this.delete(endpoint);
+    return ResponseFormatter.formatDeleted(articleId, 'Article');
+  }
+
+  /**
+   * Search articles with advanced filtering
+   */
+  async searchArticles(params: ArticleSearchParams = {}): Promise<MCPResponse> {
+    const endpoint = '/api/articles';
+    
+    // Build YouTrack search query
+    let query = '';
+    if (params.query) query += params.query;
+    if (params.tags?.length) {
+      const tagQuery = params.tags.map(tag => `tag: ${tag}`).join(' OR ');
+      query += query ? ` AND (${tagQuery})` : tagQuery;
+    }
+    if (params.project) query += query ? ` AND project: ${params.project}` : `project: ${params.project}`;
+    if (params.author) query += query ? ` AND author: ${params.author}` : `author: ${params.author}`;
+
+    const queryParams = {
+      query: query || '',
+      fields: params.includeContent 
+        ? 'id,summary,content,description,created,updated,author(login,name),tags(name),project(shortName,name)'
+        : 'id,summary,description,created,updated,author(login,name),tags(name),project(shortName,name)',
+      $top: params.limit || 50,
+      $skip: params.offset || 0
+    };
+
+    const response = await this.get(endpoint, queryParams);
+    const articles = response.data || [];
+
+    // Add search metadata
+    const searchStats = {
+      totalFound: articles.length,
+      hasContent: params.includeContent || false,
+      searchTerms: params.query || '',
+      filters: {
+        tags: params.tags || [],
+        project: params.project,
+        author: params.author
+      }
+    };
+
+    return ResponseFormatter.formatList(articles, 'article', {
+      totalCount: articles.length,
+      filters: searchStats.filters
+    });
+  }
+
+  /**
+   * Get all articles with optional project filtering
+   */
+  async listArticles(params: {
+    project?: string;
+    includeContent?: boolean;
+    limit?: number;
+  } = {}): Promise<MCPResponse> {
+    const endpoint = '/api/articles';
+    
+    const queryParams = {
+      query: params.project ? `project: ${params.project}` : '',
+      fields: params.includeContent 
+        ? 'id,summary,content,description,created,updated,author(login,name),tags(name),project(shortName,name)'
+        : 'id,summary,description,created,updated,author(login,name),tags(name),project(shortName,name)',
+      $top: params.limit || 100
+    };
+
+    const response = await this.get(endpoint, queryParams);
+    const articles = response.data || [];
+
+    return ResponseFormatter.formatList(articles, 'article', {
+      totalCount: articles.length,
+      filters: params.project ? { project: params.project } : undefined
+    });
+  }
+
+  /**
+   * Get article hierarchy (parent and children)
+   */
+  async getArticleHierarchy(articleId: string): Promise<MCPResponse> {
+    const endpoint = `/api/articles/${articleId}`;
+    const params = {
+      fields: 'id,summary,parentArticle(id,summary,parentArticle(id,summary)),childArticles(id,summary,childArticles(id,summary))'
+    };
+
+    const response = await this.get(endpoint, params);
+    const article = response.data;
+
+    // Build hierarchy tree
+    const hierarchy = {
+      current: {
+        id: article.id,
+        title: article.summary
+      },
+      parent: article.parentArticle ? {
+        id: article.parentArticle.id,
+        title: article.parentArticle.summary,
+        grandparent: article.parentArticle.parentArticle || null
+      } : null,
+      children: article.childArticles?.map((child: any) => ({
+        id: child.id,
+        title: child.summary,
+        hasChildren: child.childArticles?.length > 0
+      })) || [],
+      depth: this.calculateDepth(article),
+      totalDescendants: this.countDescendants(article.childArticles || [])
+    };
+
+    return ResponseFormatter.formatSuccess(hierarchy, `Retrieved hierarchy for article ${articleId}`);
+  }
+
+  /**
+   * Link article as child to another article
+   */
+  async linkAsSubArticle(parentArticleId: string, childArticleId: string): Promise<MCPResponse> {
+    const endpoint = `/api/articles/${childArticleId}`;
+    
+    const updateData = {
+      parentArticle: { id: parentArticleId }
+    };
+
+    await this.post(endpoint, updateData);
+    return ResponseFormatter.formatSuccess({
+      parentId: parentArticleId,
+      childId: childArticleId,
+      action: 'linked'
+    }, `Article ${childArticleId} linked as child of ${parentArticleId}`);
+  }
+
+  /**
+   * Unlink article from parent
+   */
+  async unlinkFromParent(articleId: string): Promise<MCPResponse> {
+    const endpoint = `/api/articles/${articleId}`;
+    
+    const updateData = {
+      parentArticle: null
+    };
+
+    await this.post(endpoint, updateData);
+    return ResponseFormatter.formatSuccess({
+      articleId,
+      action: 'unlinked'
+    }, `Article ${articleId} unlinked from parent`);
+  }
+
+  /**
+   * Get articles by tag
+   */
+  async getArticlesByTag(tag: string, includeContent: boolean = false, project?: string): Promise<MCPResponse> {
+    const searchParams: ArticleSearchParams = {
+      tags: [tag],
+      includeContent,
+      project,
+      limit: 100
+    };
+
+    const result = await this.searchArticles(searchParams);
+    
+    // Update the message to be more specific
+    const content = JSON.parse(result.content[0].text);
+    content.message = `Found ${content.data.count} articles with tag "${tag}"`;
+    
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify(content, null, 2)
+      }]
+    };
+  }
+
+  /**
+   * Get knowledge base statistics
+   */
+  async getKnowledgeBaseStats(project?: string): Promise<MCPResponse> {
+    const endpoint = '/api/articles';
+    const queryParams = {
+      query: project ? `project: ${project}` : '',
+      fields: 'id,summary,created,updated,author(login),tags(name),parentArticle(id)',
+      $top: 1000 // Get larger sample for accurate stats
+    };
+
+    const response = await this.get(endpoint, queryParams);
+    const articles = response.data || [];
+
+    // Calculate comprehensive statistics
+    const stats = {
+      totalArticles: articles.length,
+      topLevelArticles: articles.filter((a: any) => !a.parentArticle).length,
+      articlesWithChildren: articles.filter((a: any) => 
+        articles.some((child: any) => child.parentArticle?.id === a.id)
+      ).length,
+      tagUsage: this.calculateTagUsage(articles),
+      authorActivity: this.calculateAuthorActivity(articles),
+      creationTrend: this.calculateCreationTrend(articles),
+      recentActivity: articles
+        .sort((a: any, b: any) => new Date(b.updated).getTime() - new Date(a.updated).getTime())
+        .slice(0, 10)
+        .map((a: any) => ({
+          id: a.id,
+          title: a.summary,
+          updated: a.updated,
+          author: a.author?.login
+        }))
+    };
+
+    return ResponseFormatter.formatAnalytics(
+      { articles: articles.slice(0, 20), stats }, // Limit articles in response
+      stats,
+      'Knowledge Base Statistics'
+    );
+  }
+
+  /**
+   * Calculate article depth in hierarchy
+   */
+  private calculateDepth(article: any): number {
+    let depth = 0;
+    let current = article.parentArticle;
+    while (current) {
+      depth++;
+      current = current.parentArticle;
+    }
+    return depth;
+  }
+
+  /**
+   * Count total descendants
+   */
+  private countDescendants(children: any[]): number {
+    return children.reduce((count, child) => {
+      return count + 1 + this.countDescendants(child.childArticles || []);
+    }, 0);
+  }
+
+  /**
+   * Calculate tag usage statistics
+   */
+  private calculateTagUsage(articles: any[]): Record<string, number> {
+    const tagCounts: Record<string, number> = {};
+    articles.forEach(article => {
+      article.tags?.forEach((tag: any) => {
+        tagCounts[tag.name] = (tagCounts[tag.name] || 0) + 1;
+      });
+    });
+    return tagCounts;
+  }
+
+  /**
+   * Calculate author activity statistics
+   */
+  private calculateAuthorActivity(articles: any[]): Record<string, number> {
+    const authorCounts: Record<string, number> = {};
+    articles.forEach(article => {
+      const author = article.author?.login || 'Unknown';
+      authorCounts[author] = (authorCounts[author] || 0) + 1;
+    });
+    return authorCounts;
+  }
+
+  /**
+   * Calculate article creation trend by month
+   */
+  private calculateCreationTrend(articles: any[]): Record<string, number> {
+    const trendCounts: Record<string, number> = {};
+    articles.forEach(article => {
+      if (article.created) {
+        const date = new Date(article.created);
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        trendCounts[monthKey] = (trendCounts[monthKey] || 0) + 1;
+      }
+    });
+    return trendCounts;
+  }
+}
