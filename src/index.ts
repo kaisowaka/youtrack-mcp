@@ -19,11 +19,11 @@ import { logger } from './logger.js';
 // Load environment variables
 dotenv.config();
 
-// Streamlined tool definitions using our enhanced architecture
-const streamlinedToolDefinitions = [
+// Tool definitions using our enhanced architecture
+const toolDefinitions = [
   // PROJECT MANAGEMENT TOOLS
   {
-    name: 'youtrack_projects_manage',
+    name: 'projects',
     description: '🏗️  Comprehensive project management: list, get details, validate, get custom fields, and manage project configurations',
     inputSchema: {
       type: 'object',
@@ -49,7 +49,7 @@ const streamlinedToolDefinitions = [
 
   // ISSUE MANAGEMENT TOOLS  
   {
-    name: 'youtrack_issues_manage',
+    name: 'issues',
     description: '🎯 Complete issue lifecycle management: create, update, query, state changes, comments, and advanced operations',
     inputSchema: {
       type: 'object',
@@ -106,7 +106,7 @@ const streamlinedToolDefinitions = [
 
   // ADVANCED QUERY TOOL
   {
-    name: 'youtrack_query_issues',
+    name: 'query',
     description: '🔍 Basic YouTrack query using raw YouTrack syntax (for advanced users familiar with YouTrack query language)',
     inputSchema: {
       type: 'object',
@@ -132,7 +132,7 @@ const streamlinedToolDefinitions = [
 
     // COMMENT MANAGEMENT TOOLS
   {
-    name: 'youtrack_comments_manage',
+    name: 'comments',
     description: '💬 Issue comments management: get, add, update, delete comments',
     inputSchema: {
       type: 'object',
@@ -161,7 +161,7 @@ const streamlinedToolDefinitions = [
 
   // AGILE MANAGEMENT TOOLS
   {
-    name: 'youtrack_agile_manage',
+    name: 'agile_boards',
     description: '🏃‍♂️ Agile board and sprint management: boards, sprints, assignments, and progress tracking',
     inputSchema: {
       type: 'object',
@@ -206,7 +206,7 @@ const streamlinedToolDefinitions = [
 
   // KNOWLEDGE MANAGEMENT TOOLS
   {
-    name: 'youtrack_knowledge_manage',
+    name: 'knowledge_base',
     description: '📚 Knowledge base management: articles, search, create, update, organize',
     inputSchema: {
       type: 'object',
@@ -252,7 +252,7 @@ const streamlinedToolDefinitions = [
 
   // ANALYTICS & REPORTING
   {
-    name: 'youtrack_analytics_report',
+    name: 'analytics',
     description: '📊 Advanced analytics and reporting: project statistics, time tracking, progress reports, Gantt charts',
     inputSchema: {
       type: 'object',
@@ -289,7 +289,7 @@ const streamlinedToolDefinitions = [
 
   // ADMIN OPERATIONS
   {
-    name: 'youtrack_admin_operations',
+    name: 'admin',
     description: '⚙️  Administrative operations: user management, project setup, system configuration',
     inputSchema: {
       type: 'object',
@@ -334,7 +334,7 @@ const streamlinedToolDefinitions = [
   }
 ];
 
-class StreamlinedYouTrackMCPServer {
+class YouTrackMCPServer {
   private server: Server;
   private clientFactory: EnhancedClientFactory;
   private config: ConfigManager;
@@ -344,10 +344,10 @@ class StreamlinedYouTrackMCPServer {
     this.config.validate();
 
     const { youtrackUrl, youtrackToken } = this.config.get();
-    logger.info('🚀 Initializing Streamlined YouTrack MCP Server', { 
+    logger.info('🚀 Initializing YouTrack MCP Server', { 
       url: youtrackUrl, 
       tokenLength: youtrackToken?.length,
-      toolCount: streamlinedToolDefinitions.length 
+      toolCount: toolDefinitions.length 
     });
     
     // Initialize enhanced client factory
@@ -364,7 +364,7 @@ class StreamlinedYouTrackMCPServer {
 
     this.server = new Server(
       {
-        name: 'youtrack-mcp-streamlined',
+        name: 'youtrack-mcp',
         version: '2.0.0',
       },
       {
@@ -389,9 +389,9 @@ class StreamlinedYouTrackMCPServer {
   }
 
   private setupToolHandlers(): void {
-    // Register streamlined tool definitions
+    // Register tool definitions
     this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
-      tools: streamlinedToolDefinitions,
+      tools: toolDefinitions,
     }));
 
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -401,28 +401,28 @@ class StreamlinedYouTrackMCPServer {
         const client = this.clientFactory.createClient();
         
         switch (name) {
-          case 'youtrack_projects_manage':
+          case 'projects':
             return await this.handleProjectsManage(client, args);
           
-          case 'youtrack_issues_manage':
+          case 'issues':
             return await this.handleIssuesManage(client, args);
           
-          case 'youtrack_query_issues':
+          case 'query':
             return await this.handleQueryIssues(client, args);
           
-          case 'youtrack_comments_manage':
+          case 'comments':
             return await this.handleCommentsManage(client, args);
           
-          case 'youtrack_agile_manage':
+          case 'agile_boards':
             return await this.handleAgileManage(client, args);
           
-          case 'youtrack_knowledge_manage':
+          case 'knowledge_base':
             return await this.handleKnowledgeManage(client, args);
           
-          case 'youtrack_analytics_report':
+          case 'analytics':
             return await this.handleAnalyticsReport(client, args);
           
-          case 'youtrack_admin_operations':
+          case 'admin':
             return await this.handleAdminOperations(client, args);
           
           default:
@@ -605,11 +605,11 @@ class StreamlinedYouTrackMCPServer {
   async run(): Promise<void> {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
-    logger.info(`🎉 Streamlined YouTrack MCP Server running with ${streamlinedToolDefinitions.length} powerful tools!`);
+    logger.info(`🎉 YouTrack MCP Server running with ${toolDefinitions.length} powerful tools!`);
   }
 }
 
-const server = new StreamlinedYouTrackMCPServer();
+const server = new YouTrackMCPServer();
 server.run().catch((error) => {
   logger.error('Server failed to start', error);
   process.exit(1);
