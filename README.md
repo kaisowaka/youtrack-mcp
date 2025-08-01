@@ -1,32 +1,48 @@
 # YouTrack MCP Server
 
-A comprehensive Model Context Protocol (MCP) server for YouTrack project management. Provides 9 powerful tools for complete project lifecycle management through a single, unified interface.
+A comprehensive Model Context Protocol (MCP) server for YouTrack project management. Provides 12 powerful tools for complete project lifecycle management through a single, unified interface.
+
+## ✨ Enterprise Features
+
+🔐 **OAuth2 Authentication**: Browser-based authentication with PKCE security
+📱 **Real-Time Notifications**: WebSocket-based live updates from YouTrack
+🔔 **Smart Subscriptions**: Customizable notification filters and delivery
+🛡️ **Enhanced Security**: Automatic token refresh and secure credential storage
+
+*See [ENTERPRISE-FEATURES.md](ENTERPRISE-FEATURES.md) for complete authentication and notification guide.*
 
 ## Features
 
-- **9 Generic Tools**: Clean, intuitive tool names without vendor prefixes
+- **12 Unified Tools**: Clean, intuitive tool names including enterprise authentication and notifications
 - **Complete Project Management**: Issues, projects, agile boards, time tracking
+- **Enterprise Authentication**: OAuth2 with PKCE + traditional token support
+- **Real-Time Updates**: WebSocket notifications with smart filtering
 - **Modular Architecture**: Clean TypeScript implementation with domain-specific APIs
 - **Advanced Capabilities**: Analytics, reporting, knowledge base management
-- **Production Ready**: Robust error handling, caching, and retry logic
+- **Robust Implementation**: Comprehensive error handling, caching, and retry logic
 - **Comprehensive Validation**: Parameter validation, format checking, and smart error suggestions
 - **Error Prevention**: Backward compatibility mapping and resource existence verification
 
 ## Transformation Story
 
-This MCP server underwent a major architectural transformation to achieve production-ready quality:
+This MCP server underwent a major architectural transformation to achieve enterprise-grade quality:
 
-**From Complex to Simple**: Originally started with 71+ individual tools with complex interdependencies. Through systematic refactoring, we consolidated these into **9 powerful unified tools** - a **90% reduction** while maintaining full functionality.
+**From Complex to Simple**: Originally started with 71+ individual tools with complex interdependencies. Through systematic refactoring, we consolidated these into **12 powerful unified tools** - including enterprise authentication and real-time notifications - a **85% reduction** while adding advanced features.
 
 **From Monolithic to Modular**: Replaced a single massive client with clean, domain-specific API clients (`IssuesAPIClient`, `ProjectsAPIClient`, `AgileAPIClient`, etc.) built on a robust `BaseAPIClient` foundation.
 
 **From Generic to Specialized**: Removed all vendor-specific "enhanced" branding in favor of clean, generic naming that focuses on functionality rather than marketing terms.
 
-**Production Ready**: Achieved 100% test pass rate with comprehensive error handling, intelligent caching, and robust retry logic. The result is a maintainable, scalable MCP server ready for enterprise use.
+**Enterprise Ready**: Achieved 100% test pass rate with comprehensive error handling, intelligent caching, and robust retry logic. The result is a maintainable, scalable MCP server ready for enterprise use.
 
 *See [TRANSFORMATION-SUMMARY.md](TRANSFORMATION-SUMMARY.md) for detailed technical transformation details.*
 
 ## Available Tools
+
+### 🔐 Enterprise Authentication
+- **`auth_manage`** - OAuth2 browser authentication, token management, status
+- **`notifications`** - Real-time WebSocket notifications from YouTrack
+- **`subscriptions`** - Custom notification filters and subscription management
 
 ### Core Management
 - **`projects`** - Project management (list, details, validation, custom fields)

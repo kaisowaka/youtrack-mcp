@@ -15,13 +15,15 @@ import dotenv from 'dotenv';
 import { ClientFactory } from './api/client.js';
 import { ConfigManager } from './config.js';
 import { logger } from './logger.js';
+import { NotificationManager } from './notifications/notification-manager.js';
 import { 
   ParameterValidator, 
   ValidationError, 
   TOOL_NAME_MAPPINGS, 
-  suggestToolName,
-  validateParams 
+  suggestToolName
 } from './validation.js';
+import { AuthenticationManager } from './auth/authentication-manager.js';
+import { EnhancedMCPTools } from './tools/enhanced-tools.js';
 
 // Load environment variables
 dotenv.config();
@@ -399,6 +401,112 @@ const toolDefinitions = [
       },
       required: ['action']
     }
+  },
+
+  // AUTHENTICATION MANAGEMENT
+  {
+    name: 'auth',
+    description: '🔐 Authentication management: browser-based OAuth2 login, token management, authentication status',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['status', 'login', 'logout', 'reauth', 'test'],
+          description: 'Action: status (check auth), login (OAuth2 browser), logout (sign out), reauth (force re-auth), test (validate token)'
+        }
+      },
+      required: ['action']
+    }
+  },
+
+  // REAL-TIME NOTIFICATIONS
+  {
+    name: 'notifications',
+    description: '📱 Real-time notification system: receive live YouTrack updates, manage notification settings',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['status', 'list', 'clear', 'subscribe', 'unsubscribe', 'subscriptions'],
+          description: 'Action: status (connection status), list (recent notifications), clear (clear all), subscribe (create subscription), unsubscribe (remove subscription), subscriptions (list subscriptions)'
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of notifications to return (for list action)',
+          default: 50
+        },
+        id: {
+          type: 'string',
+          description: 'Subscription ID (for unsubscribe action)'
+        },
+        name: {
+          type: 'string',
+          description: 'Subscription name (for subscribe action)'
+        },
+        filters: {
+          type: 'object',
+          description: 'Notification filters (for subscribe action)'
+        },
+        enabled: {
+          type: 'boolean',
+          description: 'Whether subscription is enabled (for subscribe action)',
+          default: true
+        },
+        deliveryMethods: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Delivery methods for notifications (for subscribe action)',
+          default: ['immediate']
+        }
+      },
+      required: ['action']
+    }
+  },
+
+  // NOTIFICATION SUBSCRIPTIONS
+  {
+    name: 'subscriptions',
+    description: '🔔 Notification subscription management: create, update, delete, and manage notification subscriptions',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['create', 'update', 'delete', 'list'],
+          description: 'Action: create (new subscription), update (modify existing), delete (remove), list (all subscriptions)'
+        },
+        id: {
+          type: 'string',
+          description: 'Subscription ID (required for update/delete actions)'
+        },
+        name: {
+          type: 'string',
+          description: 'Subscription name (required for create action)'
+        },
+        filters: {
+          type: 'object',
+          description: 'Notification filters (project, issue type, priority, etc.)'
+        },
+        enabled: {
+          type: 'boolean',
+          description: 'Whether subscription is enabled',
+          default: true
+        },
+        deliveryMethods: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'How notifications should be delivered',
+          default: ['immediate']
+        },
+        updates: {
+          type: 'object',
+          description: 'Updates to apply to subscription (for update action)'
+        }
+      },
+      required: ['action']
+    }
   }
 ];
 
@@ -406,12 +514,25 @@ class YouTrackMCPServer {
   private server: Server;
   private clientFactory: ClientFactory;
   private config: ConfigManager;
+  private authManager: AuthenticationManager;
+  private enhancedTools: EnhancedMCPTools;
 
   constructor() {
     this.config = new ConfigManager();
     this.config.validate();
 
     const { youtrackUrl, youtrackToken } = this.config.get();
+    
+    // Initialize authentication manager
+    this.authManager = new AuthenticationManager({
+      baseUrl: youtrackUrl,
+      token: youtrackToken,
+      preferOAuth2: false, // Default to token-based auth
+      autoRefresh: true
+    });
+    
+    // Initialize enhanced tools with authentication manager
+    this.enhancedTools = new EnhancedMCPTools(this.authManager);
     logger.info('🚀 Initializing YouTrack MCP Server', { 
       url: youtrackUrl, 
       tokenLength: youtrackToken?.length,
@@ -496,17 +617,27 @@ class YouTrackMCPServer {
           case 'time_tracking':
             return await this.handleTimeTracking(client, args);
           
-          default:
+          case 'auth':
+            return await this.enhancedTools.handleAuthManage(args);
+          
+          case 'notifications':
+            return await this.enhancedTools.handleNotifications(args);
+          
+          case 'subscriptions':
+            return await this.enhancedTools.handleSubscriptions(args);
+          
+          default: {
             const suggestion = suggestToolName(name);
             logger.warn('Unknown tool requested', { 
               tool: name, 
               suggestion: TOOL_NAME_MAPPINGS[name] || 'none',
-              availableTools: ['projects', 'issues', 'query', 'comments', 'agile_boards', 'knowledge_base', 'analytics', 'admin', 'time_tracking']
+              availableTools: ['projects', 'issues', 'query', 'comments', 'agile_boards', 'knowledge_base', 'analytics', 'admin', 'time_tracking', 'auth', 'notifications', 'subscriptions']
             });
             throw new McpError(
               ErrorCode.MethodNotFound,
               `Unknown tool: ${name}. ${suggestion}`
             );
+          }
         }
       } catch (error) {
         logger.error('Tool execution error', { tool: name, error: error instanceof Error ? error.message : error });
@@ -845,11 +976,46 @@ class YouTrackMCPServer {
   async run(): Promise<void> {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
+    
+    // Initialize notification system (optional, won't fail if it can't connect)
+    try {
+      // Re-enable notification system with fixed WebSocket implementation
+      const notificationManager = new NotificationManager(
+        this.config.get().youtrackUrl || ''
+      );
+      await notificationManager.initialize(await this.authManager.getAuthToken());
+      logger.info('📱 Notification system initialized (using polling mode)');
+    } catch (error) {
+      logger.warn('Failed to initialize notification system, continuing without real-time notifications', error);
+    }
+    
     logger.info(`🎉 YouTrack MCP Server running with ${toolDefinitions.length} powerful tools!`);
+  }
+
+  /**
+   * Cleanup resources on shutdown
+   */
+  async cleanup(): Promise<void> {
+    this.enhancedTools.cleanup();
+    logger.info('🧹 Server resources cleaned up');
   }
 }
 
 const server = new YouTrackMCPServer();
+
+// Graceful shutdown handling
+process.on('SIGINT', async () => {
+  logger.info('🛑 Received SIGINT, shutting down gracefully...');
+  await server.cleanup();
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  logger.info('🛑 Received SIGTERM, shutting down gracefully...');
+  await server.cleanup();
+  process.exit(0);
+});
+
 server.run().catch((error) => {
   logger.error('Server failed to start', error);
   process.exit(1);

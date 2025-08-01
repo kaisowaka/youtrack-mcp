@@ -214,7 +214,8 @@ export const TOOL_NAME_MAPPINGS: Record<string, string> = {
   'get_project_statistics': 'analytics',
   'search_users': 'admin',
   'log_time': 'time_tracking',
-  'get_time_entries': 'time_tracking'
+  'get_time_entries': 'time_tracking',
+  'auth_manage': 'auth'
 };
 
 /**
