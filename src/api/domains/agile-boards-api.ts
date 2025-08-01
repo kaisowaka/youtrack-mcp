@@ -1,4 +1,4 @@
-import { EnhancedBaseAPIClient, MCPResponse, YouTrackConfig } from '../base/enhanced-base-client.js';
+import { BaseAPIClient, MCPResponse, YouTrackConfig } from '../base/base-client.js';
 import { ResponseFormatter } from '../base/response-formatter.js';
 
 export interface AgileBoard {
@@ -49,9 +49,9 @@ export interface SprintParams {
 
 /**
  * Agile API Client - Handles agile board and sprint operations
- * Covers 4 endpoints from OpenAPI specification (previously 0% coverage)
+ * Provides comprehensive sprint management and board functionality
  */
-export class AgileAPIClient extends EnhancedBaseAPIClient {
+export class AgileAPIClient extends BaseAPIClient {
   
   constructor(config: YouTrackConfig) {
     super(config);
