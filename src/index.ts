@@ -12,14 +12,21 @@ import {
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import dotenv from 'dotenv';
-import { EnhancedClientFactory } from './api/enhanced-client.js';
+import { ClientFactory } from './api/client.js';
 import { ConfigManager } from './config.js';
 import { logger } from './logger.js';
+import { 
+  ParameterValidator, 
+  ValidationError, 
+  TOOL_NAME_MAPPINGS, 
+  suggestToolName,
+  validateParams 
+} from './validation.js';
 
 // Load environment variables
 dotenv.config();
 
-// Tool definitions using our enhanced architecture
+// Tool definitions using our modular architecture
 const toolDefinitions = [
   // PROJECT MANAGEMENT TOOLS
   {
@@ -331,12 +338,73 @@ const toolDefinitions = [
       },
       required: ['operation']
     }
+  },
+
+  // TIME TRACKING & WORK ITEMS
+  {
+    name: 'time_tracking',
+    description: '⏱️ Time tracking and work item management: log time, track progress, generate reports',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['log_time', 'get_time_entries', 'update_time_entry', 'delete_time_entry', 'get_work_items', 'create_work_item', 'update_work_item', 'time_reports'],
+          description: 'Action: log_time (add time), get_time_entries (list entries), update_time_entry (edit), delete_time_entry (remove), get_work_items (list items), create_work_item (new), update_work_item (edit), time_reports (analytics)'
+        },
+        issueId: {
+          type: 'string',
+          description: 'Issue ID (required for most time tracking operations)'
+        },
+        duration: {
+          type: 'string',
+          description: 'Time duration (e.g., "2h", "1d", "30m") for log_time'
+        },
+        description: {
+          type: 'string',
+          description: 'Work description or comment'
+        },
+        date: {
+          type: 'string',
+          description: 'Date for time entry (YYYY-MM-DD format, defaults to today)'
+        },
+        workItemId: {
+          type: 'string',
+          description: 'Work item ID (for update/delete operations)'
+        },
+        timeEntryId: {
+          type: 'string',
+          description: 'Time entry ID (for update/delete operations)'
+        },
+        projectId: {
+          type: 'string',
+          description: 'Project ID (for reports and filtering)'
+        },
+        userId: {
+          type: 'string',
+          description: 'User ID (for reports and filtering)'
+        },
+        startDate: {
+          type: 'string',
+          description: 'Start date for reports (YYYY-MM-DD)'
+        },
+        endDate: {
+          type: 'string',
+          description: 'End date for reports (YYYY-MM-DD)'
+        },
+        workType: {
+          type: 'string',
+          description: 'Type of work (Development, Testing, Documentation, etc.)'
+        }
+      },
+      required: ['action']
+    }
   }
 ];
 
 class YouTrackMCPServer {
   private server: Server;
-  private clientFactory: EnhancedClientFactory;
+  private clientFactory: ClientFactory;
   private config: ConfigManager;
 
   constructor() {
@@ -350,8 +418,8 @@ class YouTrackMCPServer {
       toolCount: toolDefinitions.length 
     });
     
-    // Initialize enhanced client factory
-    this.clientFactory = new EnhancedClientFactory({
+    // Initialize client factory
+    this.clientFactory = new ClientFactory({
       baseURL: youtrackUrl,
       token: youtrackToken,
       timeout: 30000,
@@ -360,7 +428,7 @@ class YouTrackMCPServer {
       enableCache: true
     });
 
-    logger.info('✅ Enhanced Client Factory initialized with modular architecture');
+    logger.info('✅ Client Factory initialized with modular architecture');
 
     this.server = new Server(
       {
@@ -425,10 +493,19 @@ class YouTrackMCPServer {
           case 'admin':
             return await this.handleAdminOperations(client, args);
           
+          case 'time_tracking':
+            return await this.handleTimeTracking(client, args);
+          
           default:
+            const suggestion = suggestToolName(name);
+            logger.warn('Unknown tool requested', { 
+              tool: name, 
+              suggestion: TOOL_NAME_MAPPINGS[name] || 'none',
+              availableTools: ['projects', 'issues', 'query', 'comments', 'agile_boards', 'knowledge_base', 'analytics', 'admin', 'time_tracking']
+            });
             throw new McpError(
               ErrorCode.MethodNotFound,
-              `Unknown tool: ${name}`
+              `Unknown tool: ${name}. ${suggestion}`
             );
         }
       } catch (error) {
@@ -449,6 +526,24 @@ class YouTrackMCPServer {
   private async handleProjectsManage(client: any, args: any) {
     const { action, projectId, fields } = args;
     
+    // Validate project ID for actions that require it
+    const needsProjectId = ['get', 'validate', 'fields', 'status'];
+    if (needsProjectId.includes(action)) {
+      try {
+        ParameterValidator.validateProjectId(projectId || this.resolveProjectId(), 'projectId');
+      } catch (error) {
+        logger.error('Project validation failed', { 
+          action, 
+          projectId: projectId || this.resolveProjectId(), 
+          error: error instanceof Error ? error.message : error 
+        });
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          `Invalid project ID for ${action} action: ${error instanceof Error ? error.message : error}`
+        );
+      }
+    }
+    
     switch (action) {
       case 'list':
         return await client.projects.listProjects(fields);
@@ -467,6 +562,38 @@ class YouTrackMCPServer {
 
   private async handleIssuesManage(client: any, args: any) {
     const { action, projectId, issueId, summary, description, query, state, comment, priority, assignee, type } = args;
+    
+    // Validate parameters based on action
+    try {
+      switch (action) {
+        case 'create':
+          ParameterValidator.validateProjectId(projectId || this.resolveProjectId(), 'projectId');
+          ParameterValidator.validateRequired(summary, 'summary');
+          break;
+        case 'update':
+        case 'get':
+        case 'state':
+        case 'complete':
+        case 'start':
+          ParameterValidator.validateIssueId(issueId, 'issueId');
+          break;
+        case 'query':
+        case 'search':
+          ParameterValidator.validateRequired(query, 'query');
+          break;
+      }
+    } catch (error) {
+      logger.error('Issue parameter validation failed', { 
+        action, 
+        projectId, 
+        issueId, 
+        error: error instanceof Error ? error.message : error 
+      });
+      if (error instanceof ValidationError) {
+        throw ParameterValidator.toMcpError(error);
+      }
+      throw error;
+    }
     
     switch (action) {
       case 'create':
@@ -505,6 +632,30 @@ class YouTrackMCPServer {
 
   private async handleCommentsManage(client: any, args: any) {
     const { action, issueId, commentId, text } = args;
+    
+    // Validate parameters
+    try {
+      ParameterValidator.validateIssueId(issueId, 'issueId');
+      
+      if (['add', 'update'].includes(action)) {
+        ParameterValidator.validateRequired(text, 'text');
+      }
+      
+      if (['update', 'delete'].includes(action)) {
+        ParameterValidator.validateRequired(commentId, 'commentId');
+      }
+    } catch (error) {
+      logger.error('Comment parameter validation failed', { 
+        action, 
+        issueId, 
+        commentId, 
+        error: error instanceof Error ? error.message : error 
+      });
+      if (error instanceof ValidationError) {
+        throw ParameterValidator.toMcpError(error);
+      }
+      throw error;
+    }
     
     switch (action) {
       case 'get':
@@ -565,6 +716,34 @@ class YouTrackMCPServer {
   private async handleAnalyticsReport(client: any, args: any) {
     const { reportType, projectId, startDate, endDate, userId, milestoneId } = args;
     
+    // Validate project ID for project-specific reports
+    const needsProjectId = ['project_stats', 'gantt', 'critical_path', 'resource_allocation'];
+    if (needsProjectId.includes(reportType)) {
+      try {
+        const validatedProjectId = ParameterValidator.validateProjectId(projectId || this.resolveProjectId(), 'projectId');
+        // Verify project exists before using it
+        await client.projects.validateProject(validatedProjectId);
+      } catch (error) {
+        logger.error('Analytics project validation failed', { 
+          reportType, 
+          projectId: projectId || this.resolveProjectId(), 
+          error: error instanceof Error ? error.message : error 
+        });
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          `Invalid project ID for ${reportType} report: ${error instanceof Error ? error.message : error}`
+        );
+      }
+    }
+
+    // Validate date formats
+    if (startDate) {
+      ParameterValidator.validateDate(startDate, 'startDate');
+    }
+    if (endDate) {
+      ParameterValidator.validateDate(endDate, 'endDate');
+    }
+    
     switch (reportType) {
       case 'project_stats':
         return await client.projects.getProjectStatistics(projectId || this.resolveProjectId(), startDate, endDate, true);
@@ -599,6 +778,67 @@ class YouTrackMCPServer {
         return await client.admin.createIssueDependency(sourceIssueId, targetIssueId);
       default:
         throw new Error(`Unknown admin operation: ${operation}`);
+    }
+  }
+
+  private async handleTimeTracking(client: any, args: any) {
+    const { action, issueId, duration, description, date, workItemId, timeEntryId, projectId, userId, startDate, endDate, workType } = args;
+    
+    // Validate parameters based on action
+    try {
+      const needsIssueId = ['log_time', 'get_time_entries', 'get_work_items', 'create_work_item'];
+      if (needsIssueId.includes(action)) {
+        ParameterValidator.validateIssueId(issueId, 'issueId');
+      }
+      
+      if (action === 'log_time') {
+        ParameterValidator.validateDuration(duration, 'duration');
+      }
+      
+      // Validate date formats
+      if (date) ParameterValidator.validateDate(date, 'date');
+      if (startDate) ParameterValidator.validateDate(startDate, 'startDate');
+      if (endDate) ParameterValidator.validateDate(endDate, 'endDate');
+      
+      // Validate required IDs for specific actions
+      if (['update_time_entry', 'delete_time_entry'].includes(action)) {
+        ParameterValidator.validateRequired(timeEntryId, 'timeEntryId');
+      }
+      if (action === 'update_work_item') {
+        ParameterValidator.validateRequired(workItemId, 'workItemId');
+      }
+    } catch (error) {
+      logger.error('Time tracking parameter validation failed', { 
+        action, 
+        issueId, 
+        duration, 
+        error: error instanceof Error ? error.message : error 
+      });
+      if (error instanceof ValidationError) {
+        throw ParameterValidator.toMcpError(error);
+      }
+      throw error;
+    }
+    
+    switch (action) {
+      case 'log_time':
+        return await client.workItems.logTimeToIssue(issueId, duration, description, date, workType);
+      case 'get_time_entries':
+        return await client.workItems.getTimeEntries(issueId, startDate, endDate, userId);
+      case 'update_time_entry':
+        return await client.workItems.updateTimeEntry(timeEntryId, { duration, description, date, workType });
+      case 'delete_time_entry':
+        return await client.workItems.deleteTimeEntry(timeEntryId);
+      case 'get_work_items':
+        return await client.workItems.getWorkItems(issueId, projectId, userId);
+      case 'create_work_item':
+        return await client.workItems.createWorkItem({ issueId, description, workType, duration, date });
+      case 'update_work_item':
+        return await client.workItems.updateWorkItem(workItemId, { description, workType, duration, date });
+      case 'time_reports':
+        return await client.workItems.generateTimeReport(projectId, startDate, endDate, userId);
+      default:
+        throw new Error(`Unknown time tracking action: ${action}`);
     }
   }
 

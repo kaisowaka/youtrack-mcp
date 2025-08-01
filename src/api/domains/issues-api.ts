@@ -1,4 +1,4 @@
-import { EnhancedBaseAPIClient, MCPResponse } from '../base/enhanced-base-client.js';
+import { BaseAPIClient, MCPResponse } from '../base/base-client.js';
 import { ResponseFormatter } from '../base/response-formatter.js';
 
 export interface IssueCreateParams {
@@ -37,7 +37,7 @@ export interface IssueQueryParams {
  * Issues API Client - Handles all issue-related operations
  * Covers 32 endpoints from OpenAPI specification
  */
-export class IssuesAPIClient extends EnhancedBaseAPIClient {
+export class IssuesAPIClient extends BaseAPIClient {
   
   /**
    * Create a new issue
@@ -418,7 +418,7 @@ export class IssuesAPIClient extends EnhancedBaseAPIClient {
   }
 
   /**
-   * Smart search issues with enhanced filtering
+   * Smart search issues with advanced filtering
    */
   async smartSearchIssues(searchQuery: string, options: { projectId?: string } = {}): Promise<MCPResponse> {
     const query = options.projectId 

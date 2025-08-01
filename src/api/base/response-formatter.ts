@@ -1,4 +1,4 @@
-import { MCPResponse } from './enhanced-base-client.js';
+import { MCPResponse } from './base-client.js';
 
 export interface ResponseMetadata {
   cached?: boolean;

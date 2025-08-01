@@ -124,7 +124,7 @@ src/api/
 │   ├── error-handler.ts        // Unified error handling
 │   └── response-formatter.ts   // Consistent responses
 ├── domains/
-│   ├── agile-api.ts           // ✨ NEW: Agile management
+│   ├── agile-boards-api.ts           // ✨ NEW: Agile management
 │   ├── workitems-api.ts       // ✨ NEW: Time tracking
 │   ├── admin-api.ts           // ✨ NEW: Administration
 │   └── customfields-api.ts    // ✨ NEW: Field management

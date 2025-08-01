@@ -1,4 +1,4 @@
-import { EnhancedBaseAPIClient, MCPResponse } from '../base/enhanced-base-client.js';
+import { BaseAPIClient, MCPResponse } from '../base/base-client.js';
 import { ResponseFormatter } from '../base/response-formatter.js';
 
 export interface ProjectCreateParams {
@@ -37,9 +37,9 @@ export interface CustomFieldParams {
 
 /**
  * Admin API Client - Handles administrative operations
- * Covers 62 endpoints from OpenAPI specification for complete system administration
+ * Covers user management, system configuration, and advanced operations
  */
-export class AdminAPIClient extends EnhancedBaseAPIClient {
+export class AdminAPIClient extends BaseAPIClient {
 
   // ==================== PROJECT ADMINISTRATION ====================
 

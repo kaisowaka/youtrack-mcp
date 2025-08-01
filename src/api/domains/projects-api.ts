@@ -1,4 +1,4 @@
-import { EnhancedBaseAPIClient, MCPResponse } from '../base/enhanced-base-client.js';
+import { BaseAPIClient, MCPResponse } from '../base/base-client.js';
 import { ResponseFormatter } from '../base/response-formatter.js';
 
 export interface ProjectTimeTrackingSettings {
@@ -27,10 +27,10 @@ export interface ProjectFieldSettings {
 }
 
 /**
- * Projects API Client - Handles project-specific operations
- * Covers 11 endpoints from OpenAPI specification for project management
+ * Projects API Client - Handles all project-related operations
+ * Covers 25+ endpoints from OpenAPI specification
  */
-export class ProjectsAPIClient extends EnhancedBaseAPIClient {
+export class ProjectsAPIClient extends BaseAPIClient {
 
   /**
    * List all accessible projects

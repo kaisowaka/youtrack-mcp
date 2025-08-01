@@ -1,4 +1,4 @@
-import { EnhancedBaseAPIClient, MCPResponse } from '../base/enhanced-base-client.js';
+import { BaseAPIClient, MCPResponse } from '../base/base-client.js';
 import { ResponseFormatter } from '../base/response-formatter.js';
 
 export interface ArticleCreateParams {
@@ -30,10 +30,10 @@ export interface ArticleSearchParams {
 }
 
 /**
- * Knowledge Base API Client - Handles article and documentation operations
- * Covers 15 endpoints from OpenAPI specification for knowledge management
+ * Knowledge Base API Client - Handles knowledge base and article operations
+ * Provides comprehensive documentation and knowledge management
  */
-export class KnowledgeBaseAPIClient extends EnhancedBaseAPIClient {
+export class KnowledgeBaseAPIClient extends BaseAPIClient {
 
   /**
    * Create a new knowledge base article
