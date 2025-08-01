@@ -395,4 +395,66 @@ export class ProjectsAPIClient extends BaseAPIClient {
       );
     }
   }
+
+  /**
+   * Get project field values for a specific field
+   */
+  async getProjectFieldValues(projectId: string, fieldName: string): Promise<MCPResponse> {
+    try {
+      // First get the custom field configuration
+      const fieldsEndpoint = `/api/admin/projects/${projectId}/customFields`;
+      const fieldsResponse = await this.get(fieldsEndpoint, {
+        fields: 'field(name,fieldType(valueType)),bundle(id,name)'
+      });
+      
+      const fields = fieldsResponse.data || [];
+      const targetField = fields.find((f: any) => f.field?.name === fieldName);
+      
+      if (!targetField) {
+        return ResponseFormatter.formatError(
+          `Field "${fieldName}" not found in project ${projectId}`,
+          'Field not found'
+        );
+      }
+      
+      // If field has a bundle, get bundle values
+      if (targetField.bundle?.id) {
+        const bundleType = targetField.field.fieldType?.valueType || 'enum';
+        const bundleEndpoint = `/api/admin/customFieldSettings/bundles/${bundleType}/${targetField.bundle.id}/values`;
+        
+        const valuesResponse = await this.get(bundleEndpoint, {
+          fields: 'id,name,description,ordinal,color(background,foreground)'
+        });
+        
+        const values = valuesResponse.data || [];
+        
+        return ResponseFormatter.formatSuccess({
+          field: fieldName,
+          fieldType: targetField.field.fieldType?.valueType,
+          bundle: targetField.bundle.name,
+          values: values.map((v: any) => ({
+            name: v.name,
+            description: v.description,
+            color: v.color,
+            ordinal: v.ordinal
+          })),
+          totalValues: values.length
+        }, `Retrieved ${values.length} values for field "${fieldName}"`);
+      }
+      
+      // For non-bundle fields, return field info
+      return ResponseFormatter.formatSuccess({
+        field: fieldName,
+        fieldType: targetField.field.fieldType?.valueType,
+        hasValues: false,
+        message: 'This field type does not have predefined values'
+      }, `Field "${fieldName}" does not use predefined values`);
+      
+    } catch (error) {
+      return ResponseFormatter.formatError(
+        error instanceof Error ? error.message : String(error),
+        `Failed to get field values for "${fieldName}"`
+      );
+    }
+  }
 }

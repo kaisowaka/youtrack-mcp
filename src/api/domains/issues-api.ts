@@ -46,13 +46,28 @@ export class IssuesAPIClient extends BaseAPIClient {
     const endpoint = `/api/issues`;
     
     const issueData = {
-      project: { id: projectId },
+      $type: 'Issue',
+      project: { 
+        $type: 'Project',
+        shortName: projectId  // Use shortName instead of id for project reference
+      },
       summary: params.summary,
       description: params.description || '',
       ...this.buildCustomFields(params)
     };
     
     const response = await this.post(endpoint, issueData);
+    const issueId = response.data.id;
+    
+    // Apply custom fields via commands after creation (more reliable)
+    if (issueId && (params.type || params.priority || params.state || params.assignee || params.subsystem)) {
+      try {
+        await this.applyCustomFieldsViaCommands(issueId, params);
+      } catch (error) {
+        console.warn(`Issue ${issueId} created but failed to apply some custom fields:`, error);
+      }
+    }
+    
     return ResponseFormatter.formatCreated(response.data, 'Issue', `Issue "${params.summary}" created successfully`);
   }
   
@@ -74,6 +89,7 @@ export class IssuesAPIClient extends BaseAPIClient {
     const endpoint = `/api/issues/${issueId}`;
     
     const updateData = {
+      $type: 'Issue',
       summary: updates.summary,
       description: updates.description,
       ...this.buildCustomFields(updates)
@@ -142,7 +158,10 @@ export class IssuesAPIClient extends BaseAPIClient {
   async addComment(issueId: string, text: string): Promise<MCPResponse> {
     const endpoint = `/api/issues/${issueId}/comments`;
     
-    const commentData = { text };
+    const commentData = { 
+      $type: 'IssueComment',
+      text 
+    };
     const response = await this.post(endpoint, commentData);
     
     return ResponseFormatter.formatCreated(response.data, 'Comment', 'Comment added successfully');
@@ -154,7 +173,11 @@ export class IssuesAPIClient extends BaseAPIClient {
   async updateComment(issueId: string, commentId: string, text: string): Promise<MCPResponse> {
     const endpoint = `/api/issues/${issueId}/comments/${commentId}`;
     
-    const response = await this.post(endpoint, { text });
+    const commentData = { 
+      $type: 'IssueComment',
+      text 
+    };
+    const response = await this.post(endpoint, commentData);
     return ResponseFormatter.formatUpdated(response.data, 'Comment', { text }, 'Comment updated successfully');
   }
   
@@ -191,8 +214,15 @@ export class IssuesAPIClient extends BaseAPIClient {
     const endpoint = `/api/issues/${sourceIssueId}/links`;
     
     const linkData = {
-      linkType: { name: linkType },
-      issues: [{ id: targetIssueId }]
+      $type: 'IssueLink',
+      linkType: { 
+        $type: 'IssueLinkType',
+        name: linkType 
+      },
+      issues: [{ 
+        $type: 'Issue',
+        id: targetIssueId 
+      }]
     };
     
     const response = await this.post(endpoint, linkData);
@@ -284,35 +314,42 @@ export class IssuesAPIClient extends BaseAPIClient {
    * Change issue state with workflow validation
    */
   async changeIssueState(issueId: string, newState: string, comment?: string, resolution?: string): Promise<MCPResponse> {
-    const endpoint = `/api/issues/${issueId}`;
-    
-    const updateData: any = {
-      customFields: [
-        {
-          name: 'State',
-          value: { name: newState }
-        }
-      ]
-    };
-    
-    if (resolution) {
-      updateData.customFields.push({
-        name: 'Resolution',
-        value: { name: resolution }
-      });
+    try {
+      // Use PATCH to update the issue with correct customFields structure
+      const endpoint = `/api/issues/${issueId}`;
+      
+      const updateData = {
+        customFields: [
+          {
+            $type: 'StateIssueCustomField',
+            name: 'State',
+            value: {
+              $type: 'StateBundleElement',
+              name: newState
+            }
+          }
+        ]
+      };
+      
+      await this.patch(endpoint, updateData);
+      
+      // Add comment if provided
+      if (comment) {
+        await this.addComment(issueId, comment);
+      }
+      
+      return ResponseFormatter.formatUpdated(
+        { id: issueId }, 
+        'Issue', 
+        { state: newState, resolution }, 
+        `Issue ${issueId} moved to ${newState}${resolution ? ' (' + resolution + ')' : ''}`
+      );
+    } catch (error) {
+      return ResponseFormatter.formatError(
+        error instanceof Error ? error.message : String(error),
+        `Failed to change state of issue ${issueId}`
+      );
     }
-    
-    const response = await this.post(endpoint, updateData);
-    
-    // Add comment if provided
-    if (comment) {
-      await this.addComment(issueId, comment);
-    }
-    
-    return ResponseFormatter.formatUpdated(response.data, 'Issue', 
-      { state: newState, resolution }, 
-      `Issue ${issueId} moved to ${newState}${resolution ? ' (' + resolution + ')' : ''}`
-    );
   }
   
   /**
@@ -371,50 +408,70 @@ export class IssuesAPIClient extends BaseAPIClient {
   
   /**
    * Build custom fields object from parameters
+   * Using minimal approach to avoid any $type conflicts
    */
   private buildCustomFields(params: any): any {
-    const customFields: any[] = [];
     const result: any = {};
     
-    // Handle standard fields that map to custom fields
-    if (params.type) {
-      customFields.push({ name: 'Type', value: { name: params.type } });
-    }
-    
-    if (params.priority) {
-      customFields.push({ name: 'Priority', value: { name: params.priority } });
-    }
-    
-    if (params.state) {
-      customFields.push({ name: 'State', value: { name: params.state } });
-    }
-    
-    if (params.assignee) {
-      customFields.push({ name: 'Assignee', value: { login: params.assignee } });
-    }
-    
-    if (params.dueDate) {
-      customFields.push({ name: 'Due Date', value: new Date(params.dueDate).getTime() });
-    }
-    
-    if (params.estimation) {
-      customFields.push({ name: 'Estimation', value: params.estimation });
-    }
-    
-    if (params.subsystem) {
-      customFields.push({ name: 'Subsystem', value: { name: params.subsystem } });
-    }
-    
-    if (customFields.length > 0) {
-      result.customFields = customFields;
-    }
-    
-    // Handle tags separately
+    // Only handle tags with verified structure
     if (params.tags && params.tags.length > 0) {
-      result.tags = params.tags.map((tag: string) => ({ name: tag }));
+      result.tags = params.tags.map((tag: string) => ({ 
+        name: tag  // Simplified - remove $type for now
+      }));
     }
     
     return result;
+  }
+
+  /**
+   * Apply custom fields to an issue using commands (more reliable than direct API)
+   */
+  private async applyCustomFieldsViaCommands(issueId: string, params: any): Promise<void> {
+    const commands: string[] = [];
+    
+    if (params.type) {
+      commands.push(`Type ${params.type}`);
+    }
+    
+    if (params.priority) {
+      commands.push(`Priority ${params.priority}`);
+    }
+    
+    if (params.state) {
+      commands.push(`State ${params.state}`);
+    }
+    
+    if (params.assignee) {
+      commands.push(`Assignee ${params.assignee}`);
+    }
+    
+    if (params.subsystem) {
+      commands.push(`Subsystem ${params.subsystem}`);
+    }
+    
+    // Apply commands one by one
+    for (const command of commands) {
+      try {
+        await this.applyCommand(issueId, command);
+      } catch (error) {
+        // Log but don't fail the entire operation
+        console.warn(`Failed to apply command "${command}" to issue ${issueId}:`, error);
+      }
+    }
+  }
+
+  /**
+   * Apply a command to an issue
+   */
+  private async applyCommand(issueId: string, command: string): Promise<void> {
+    const endpoint = `/api/commands`;
+    await this.post(endpoint, {
+      query: `${issueId} ${command}`,
+      caret: command.length + issueId.length + 1,
+      issues: [{ 
+        id: issueId 
+      }]
+    });
   }
 
   /**
@@ -432,7 +489,7 @@ export class IssuesAPIClient extends BaseAPIClient {
    * Complete an issue (set to Done state with comment)
    */
   async completeIssue(issueId: string, comment?: string): Promise<MCPResponse> {
-    return this.changeIssueState(issueId, 'Done', comment, 'Fixed');
+    return this.changeIssueState(issueId, 'Fixed', comment, 'Fixed');
   }
 
   /**

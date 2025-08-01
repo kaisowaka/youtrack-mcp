@@ -134,6 +134,25 @@ export class BaseAPIClient {
   }
 
   /**
+   * Perform PATCH request
+   */
+  protected async patch<T = any>(endpoint: string, data?: any): Promise<APIResponse<T>> {
+    const response = await this.axios.patch(endpoint, data);
+    
+    // Invalidate related cache entries
+    if (this.config.enableCache !== false) {
+      this.invalidateCache(endpoint);
+    }
+    
+    return {
+      data: response.data,
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers
+    };
+  }
+
+  /**
    * Perform DELETE request
    */
   protected async delete<T = any>(endpoint: string): Promise<APIResponse<T>> {
