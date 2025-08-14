@@ -1,22 +1,46 @@
-# YouTrack MCP
+# YouTrack MCP TypeScript Server
 
-A comprehensive YouTrack API integration for message channel providers (MCP) implemented in TypeScript. This server provides a robust interface to YouTrack's functionalities including issue management, sprint planning, and knowledge base operations.
-
-![CI](https://github.com/itsalfredakku/youtrack-mcp/actions/workflows/ci.yml/badge.svg)
+[![CI](https://github.com/itsalfredakku/youtrack-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/itsalfredakku/youtrack-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+A Model Context Protocol (MCP) server for YouTrack integration, providing a standardized interface for LLMs to interact with YouTrack's issue tracking, agile management, and knowledge base features.
+
+## What is an MCP Server?
+
+A Model Context Protocol (MCP) server standardizes how large language models (LLMs) interact with external tools, data sources, and services. This server specifically enables LLMs to seamlessly integrate with YouTrack by:
+
+- **Exposing tools**: Provides structured access to YouTrack's API functionality
+- **Managing resources**: Handles YouTrack issues, sprints, knowledge base articles, and more
+- **Supporting stateful interactions**: Maintains context across multiple requests
+- **Ensuring secure access**: Manages authentication and authorization
+- **Providing structured logging**: Detailed logging for monitoring and debugging
 
 ## Features
 
-- Complete YouTrack REST API access
-- Issue management (create, update, search, comment)
-- Sprint and agile board operations
-- Knowledge base article management
-- Custom field support
-- Time tracking integration
-- Advanced query capabilities
-- State management workflow
-- Configurable caching
-- Webhook support
+- **Issue Management**
+  - Create, read, update, delete issues
+  - Add comments and attachments
+  - Search issues with advanced filtering
+  - Track issue time and estimation
+
+- **Agile & Sprint Management**
+  - Create and manage sprints
+  - Assign issues to sprints
+  - Track sprint progress
+
+- **State Management & Workflows**
+  - Transition issues through states
+  - Start working on issues with automatic assignment
+  - Complete issues with proper resolution
+
+- **Knowledge Base Integration**
+  - Create and manage articles
+  - Link issues to knowledge base articles
+  - Search knowledge base content
+
+- **Project Management**
+  - List and filter projects
+  - Get project details and customization options
 
 ## Installation
 
@@ -34,13 +58,13 @@ npm run build
 
 ## Configuration
 
-Copy the example environment file and configure your settings:
+Copy the example environment file and configure it with your YouTrack instance details:
 
 ```bash
 cp .env.example .env
 ```
 
-Edit the `.env` file with your YouTrack details:
+Edit the `.env` file with your specific configuration:
 
 ```properties
 # YouTrack instance URL (without trailing slash)
@@ -74,60 +98,91 @@ CACHE_ENABLED=true
 
 ## Usage
 
-Start the MCP server:
+### Starting the Server
 
 ```bash
+# Start the MCP server
 npm start
-```
 
-For development with automatic reloading:
-
-```bash
+# Start in development mode with auto-reload
 npm run dev
 ```
 
-## API Tools
+### Interacting with the Server
 
-The YouTrack MCP server provides multiple tools for interacting with YouTrack:
+The YouTrack MCP server exposes tools following the Model Context Protocol. LLM applications can discover and use these tools to interact with YouTrack.
+
+#### Example: Creating an Issue
+
+```json
+{
+  "tool": "create_issue",
+  "params": {
+    "projectId": "PROJECT-1",
+    "summary": "Implement new feature",
+    "description": "We need to implement the new feature as described in the specs.",
+    "type": "Task",
+    "priority": "Normal"
+  }
+}
+```
+
+#### Example: Searching Issues
+
+```json
+{
+  "tool": "search_issues",
+  "params": {
+    "query": "project: PROJECT-1 #bug state: Open",
+    "limit": 10
+  }
+}
+```
+
+#### Example: Starting Work on an Issue
+
+```json
+{
+  "tool": "start_working_on_issue",
+  "params": {
+    "issueId": "PROJECT-1-123",
+    "comment": "Starting implementation of this feature",
+    "estimatedTime": "2d"
+  }
+}
+```
+
+## Available Tools
+
+The server provides 60+ tools for interacting with YouTrack. Here are some of the most commonly used:
 
 ### Issue Management
+- `create_issue` - Create a new issue
+- `get_issue` - Get issue details
+- `update_issue` - Update an issue
+- `add_issue_comment` - Add a comment to an issue
+- `search_issues` - Search for issues
 
-- `create_issue`: Create a new issue in YouTrack
-- `get_issue`: Retrieve issue details
-- `update_issue`: Update an existing issue
-- `add_issue_comment`: Add a comment to an issue
-- `get_issue_comments`: Retrieve comments on an issue
-- `search_issues`: Search for issues using YouTrack query language
+### Agile & Sprint Management
+- `list_sprints` - List all sprints
+- `create_sprint` - Create a new sprint
+- `assign_issue_to_sprint` - Add an issue to a sprint
+- `get_sprint_issues` - Get all issues in a sprint
 
 ### State Management
-
-- `start_working_on_issue`: Begin work on an issue and change its state
-- `change_issue_state`: Transition an issue to a different state
-- `complete_issue`: Mark an issue as completed
-
-### Sprint Management
-
-- `list_sprints`: List all sprints in a board
-- `create_sprint`: Create a new sprint
-- `assign_issue_to_sprint`: Add an issue to a sprint
-- `get_sprint_issues`: Get all issues in a sprint
-
-### Time Tracking
-
-- `log_work`: Log time spent on an issue
-- `get_time_tracking`: Retrieve time tracking records for an issue
+- `start_working_on_issue` - Begin work on an issue
+- `change_issue_state` - Change an issue's state
+- `complete_issue` - Mark an issue as completed
 
 ### Knowledge Base
-
-- `create_article`: Create a new knowledge base article
-- `update_article`: Update an existing article
-- `get_article`: Retrieve article details
-- `search_articles`: Search for articles
+- `create_article` - Create a knowledge base article
+- `update_article` - Update an article
+- `get_article` - Get article details
+- `search_articles` - Search knowledge base articles
 
 ### Project Management
-
-- `list_projects`: List all accessible projects
-- `get_project_details`: Get detailed information about a project
+- `list_projects` - List all accessible projects
+- `get_project_details` - Get project information
 
 ## Development
 
@@ -135,16 +190,35 @@ The YouTrack MCP server provides multiple tools for interacting with YouTrack:
 
 - Node.js 18.x or later
 - npm 8.x or later
+- A YouTrack instance with API access
 
-### Setup Development Environment
+### Development Workflow
 
 ```bash
 # Install dependencies
 npm install
 
-# Run in development mode
+# Start in development mode with auto-reload
 npm run dev
+
+# Run linting
+npm run lint
+
+# Run type checking
+npm run type-check
+
+# Build the project
+npm run build
 ```
+
+### Project Structure
+
+- `src/index.ts` - Main entry point
+- `src/youtrack-client.ts` - YouTrack API client
+- `src/tools/` - Individual MCP tool implementations
+- `src/utils/` - Utility functions and helpers
+- `src/types/` - TypeScript type definitions
+- `src/config/` - Configuration management
 
 ### Testing
 
@@ -155,52 +229,32 @@ npm test
 # Run specific test suites
 npm run test:queries
 npm run test:issues
-
-# Check code quality
-npm run lint
-```
-
-### Build
-
-```bash
-# Build the project
-npm run build
-
-# Verify the build
-npm run verify-build
-```
-
-## API Reference
-
-The YouTrack MCP server exposes a standardized API following the Message Channel Provider protocol. Each tool accepts specific parameters and returns standardized responses.
-
-For example, to create an issue:
-
-```json
-{
-  "tool": "create_issue",
-  "params": {
-    "projectId": "PROJECT-1",
-    "summary": "Issue title",
-    "description": "Detailed description",
-    "type": "Task",
-    "priority": "Normal"
-  }
-}
 ```
 
 ## Troubleshooting
 
-Common issues and their solutions:
+### Common Issues
 
-1. **Authentication errors**: Ensure your YouTrack token has the necessary permissions
-2. **Project not found**: Verify the project ID exists and is accessible to your account
-3. **Invalid query syntax**: Check the YouTrack query language documentation for proper syntax
-4. **State transition issues**: Make sure the workflow allows the state change you're attempting
+1. **Authentication errors**: Verify your YouTrack token has the necessary permissions and hasn't expired.
+
+2. **Project not found**: Ensure the project ID exists and is accessible to your account.
+
+3. **API rate limiting**: YouTrack may impose rate limits. Consider implementing retry logic for critical operations.
+
+4. **State transition errors**: Some state transitions may be prohibited by your YouTrack workflow configuration.
+
+### Logs
+
+Logs are stored in the `logs` directory:
+
+- `combined.log` - All log entries
+- `error.log` - Error-level logs only
+
+Set the `LOG_LEVEL` environment variable to control logging verbosity (error, warn, info, debug).
 
 ## Contributing
 
-Please read our [CONTRIBUTING.md](CONTRIBUTING.md) for details on the process for submitting pull requests.
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
@@ -212,8 +266,9 @@ Please read our [CONTRIBUTING.md](CONTRIBUTING.md) for details on the process fo
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Acknowledgments
+## Acknowledgements
 
 - [YouTrack REST API](https://www.jetbrains.com/help/youtrack/standalone/api-reference.html)
+- [Model Context Protocol (MCP)](https://github.com/microsoft/mcp)
 - [TypeScript](https://www.typescriptlang.org/)
 - [Node.js](https://nodejs.org/)
