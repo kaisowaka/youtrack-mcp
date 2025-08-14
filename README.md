@@ -36,7 +36,7 @@ A Model Context Protocol (MCP) server for YouTrack integration, providing a stan
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/youtrack-mcp-ts.git
+git clone https://github.com/itsalfredakku/youtrack-mcp.git
 cd youtrack-mcp-ts
 
 # Install dependencies
