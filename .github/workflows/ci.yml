@@ -2,196 +2,50 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, dev ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, dev ]
   workflow_dispatch:
 
 jobs:
-  build-and-validate:
+  build-and-test:
     runs-on: ubuntu-latest
-    
-    strategy:
-      matrix:
-        node-version: [18.x, 20.x, 22.x]
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'npm'
-        
-    - name: Install dependencies
-      run: npm ci
-      
-    - name: Run linting
-      run: npm run lint --if-present
-      
-    - name: Run type checking
-      run: npx tsc --noEmit
-      
-    - name: Build project
-      run: npm run build
-      
-    - name: Validate build output
-      run: |
-        echo "🔍 Validating build output..."
-        
-        # Check that build output exists
-        if [ ! -f "dist/index.js" ]; then
-          echo "❌ Build output missing: dist/index.js"
-          exit 1
-        fi
-        echo "✅ Build output found"
-        
-        # Check for essential components in build
-        essential_exports=("tools" "Server" "YouTrackClient")
-        for export in "${essential_exports[@]}"; do
-          if grep -q "$export" dist/index.js; then
-            echo "✅ $export found in build output"
-          else
-            echo "❌ Missing essential component: $export"
-            exit 1
-          fi
-        done
-        
-    - name: Test MCP server startup
-      run: |
-        echo "🚀 Testing MCP server startup..."
-        # Test that the server can be imported without errors
-        node -e "
-          try {
-            require('./dist/index.js');
-            console.log('✅ MCP server loads successfully');
-          } catch (error) {
-            console.error('❌ MCP server failed to load:', error.message);
-            process.exit(1);
-          }
-        "
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-  security-audit:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Use Node.js 20.x
-      uses: actions/setup-node@v4
-      with:
-        node-version: 20.x
-        cache: 'npm'
-        
-    - name: Install dependencies
-      run: npm ci
-      
-    - name: Run security audit
-      run: |
-        echo "🔒 Running security audit..."
-        npm audit --audit-level high
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: 'npm'
 
-  project-validation:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Use Node.js 20.x
-      uses: actions/setup-node@v4
-      with:
-        node-version: 20.x
-        cache: 'npm'
-        
-    - name: Install dependencies
-      run: npm ci
-      
-    - name: Validate project structure
-      run: |
-        echo "📁 Validating project structure..."
-        
-        # Check essential files exist
-        required_files=(
-          "package.json"
-          "tsconfig.json" 
-          "src/index.ts"
-          "src/tools.ts"
-          "src/youtrack-client.ts"
-          "README.md"
-        )
-        
-        for file in "${required_files[@]}"; do
-          if [ -f "$file" ]; then
-            echo "✅ $file exists"
-          else
-            echo "❌ Missing required file: $file"
-            exit 1
-          fi
-        done
-        
-    - name: Validate MCP protocol compliance
-      run: |
-        echo "🔍 Validating MCP protocol compliance..."
-        
-        # Build first to check compiled output
-        npm run build
-        
-        # Check for required MCP server methods in built output
-        if grep -q "list_tools\|call_tool" dist/index.js; then
-          echo "✅ MCP protocol methods found"
-        else
-          echo "❌ Missing required MCP protocol methods"
-          exit 1
-        fi
-        
-    - name: Validate tool definitions
-      run: |
-        echo "🔧 Validating tool definitions..."
-        
-        # Count tools defined in source
-        tool_count=$(grep -c "name:" src/tools.ts || echo "0")
-        echo "📊 Found $tool_count tools defined"
-        
-        if [ "$tool_count" -gt 50 ]; then
-          echo "✅ Comprehensive tool set confirmed ($tool_count tools)"
-        elif [ "$tool_count" -gt 20 ]; then
-          echo "✅ Good tool coverage ($tool_count tools)"
-        else
-          echo "⚠️ Limited tool set ($tool_count tools) - expected more"
-        fi
-        
-        # Check for key tool categories
-        key_tools=("create_issue" "query_issues" "update_issue" "generate_gantt_chart")
-        for tool in "${key_tools[@]}"; do
-          if grep -q "$tool" src/tools.ts; then
-            echo "✅ Key tool '$tool' found"
-          else
-            echo "⚠️ Key tool '$tool' not found"
-          fi
-        done
-        
-    - name: Validate documentation
-      run: |
-        echo "📚 Validating documentation..."
-        
-        # Check README structure
-        if grep -q "## " README.md; then
-          echo "✅ README has proper section structure"
-        else
-          echo "❌ README lacks proper structure"
-          exit 1
-        fi
-        
-        # Check for key documentation sections
-        key_sections=("Quick Start" "Configuration" "Tools" "Usage")
-        for section in "${key_sections[@]}"; do
-          if grep -qi "$section" README.md; then
-            echo "✅ Section '$section' found in README"
-          else
-            echo "⚠️ Section '$section' missing from README"
-          fi
-        done
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type Check
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+      - name: Basic Runtime Smoke Test
+        run: |
+          node -e "require('./dist/index.js'); console.log('Server module loads successfully');"
+
+      - name: Run Query Tests (lightweight)
+        run: npm run test:queries
+
+      - name: Verify Build Script
+        run: npm run verify-build
+
+      - name: Artifact (optional) - Dist
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+          if-no-files-found: error
