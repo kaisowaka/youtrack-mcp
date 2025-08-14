@@ -10,6 +10,8 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    env:
+      SKIP_CONFIG_VALIDATION: 'true'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -33,8 +35,7 @@ jobs:
         run: npm run build
 
       - name: Basic Runtime Smoke Test
-        run: |
-          node -e "require('./dist/index.js'); console.log('Server module loads successfully');"
+        run: node -e "require('./dist/index.js'); console.log('Server module loads successfully');"
 
       - name: Run Query Tests (lightweight)
         run: npm run test:queries

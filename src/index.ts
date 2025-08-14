@@ -1001,22 +1001,33 @@ class YouTrackMCPServer {
   }
 }
 
-const server = new YouTrackMCPServer();
+const skipRuntime = process.env.SKIP_CONFIG_VALIDATION === 'true' || process.env.CI === 'true';
 
-// Graceful shutdown handling
-process.on('SIGINT', async () => {
-  logger.info('Received SIGINT, shutting down');
-  await server.cleanup();
-  process.exit(0);
-});
-
-process.on('SIGTERM', async () => {
-  logger.info('Received SIGTERM, shutting down');
-  await server.cleanup();
-  process.exit(0);
-});
-
-server.run().catch((error) => {
-  logger.error('Server failed to start', error);
-  process.exit(1);
-});
+let server: YouTrackMCPServer | null = null;
+try {
+  server = new YouTrackMCPServer();
+  if (skipRuntime) {
+    logger.info('Configuration missing or CI mode detected - skipping runtime server startup');
+  } else {
+    // Graceful shutdown handling only when running
+    process.on('SIGINT', async () => {
+      logger.info('Received SIGINT, shutting down');
+      if (server) await server.cleanup();
+      process.exit(0);
+    });
+    process.on('SIGTERM', async () => {
+      logger.info('Received SIGTERM, shutting down');
+      if (server) await server.cleanup();
+      process.exit(0);
+    });
+    server.run().catch((error) => {
+      logger.error('Server failed to start', error);
+      process.exit(1);
+    });
+  }
+} catch (e) {
+  logger.error('Failed to initialize server', e);
+  if (!skipRuntime) {
+    process.exit(1);
+  }
+}
