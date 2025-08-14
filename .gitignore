@@ -103,6 +103,9 @@ temp/
 tmp/
 *.tmp
 
+# Ignore npm lock file (requested to be untracked)
+package-lock.json
+
 # Test artifacts
 test-results/
 coverage/
