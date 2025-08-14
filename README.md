@@ -2,7 +2,7 @@
 
 A comprehensive YouTrack API integration for message channel providers (MCP) implemented in TypeScript. This server provides a robust interface to YouTrack's functionalities including issue management, sprint planning, and knowledge base operations.
 
-![CI](https://github.com/yourusername/youtrack-mcp-ts/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/itsalfredakku/youtrack-mcp/actions/workflows/ci.yml/badge.svg)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Features
