@@ -5,16 +5,6 @@
 
 A Model Context Protocol (MCP) server for YouTrack integration, providing a standardized interface for LLMs to interact with YouTrack's issue tracking, agile management, and knowledge base features.
 
-## What is an MCP Server?
-
-A Model Context Protocol (MCP) server standardizes how large language models (LLMs) interact with external tools, data sources, and services. This server specifically enables LLMs to seamlessly integrate with YouTrack by:
-
-- **Exposing tools**: Provides structured access to YouTrack's API functionality
-- **Managing resources**: Handles YouTrack issues, sprints, knowledge base articles, and more
-- **Supporting stateful interactions**: Maintains context across multiple requests
-- **Ensuring secure access**: Manages authentication and authorization
-- **Providing structured logging**: Detailed logging for monitoring and debugging
-
 ## Features
 
 - **Issue Management**
