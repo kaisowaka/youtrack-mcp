@@ -212,7 +212,7 @@ export class ResponseFormatter {
           text: JSON.stringify(content, null, 2)
         }]
       };
-    } catch (error) {
+  } catch {
       // If parsing fails, return original response
       return response;
     }

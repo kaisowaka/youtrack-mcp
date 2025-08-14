@@ -158,7 +158,7 @@ export class WorkItemsAPIClient extends BaseAPIClient {
    */
   async getWorkItems(issueId?: string, projectId?: string, userId?: string): Promise<MCPResponse> {
     try {
-      let endpoint = `/api/workItems`;
+  const endpoint = `/api/workItems`;
       const params: any = {
         fields: 'id,duration,date,description,type(id,name),author(id,login,fullName),issue(id,summary,project(id,name,shortName))'
       };

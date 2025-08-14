@@ -472,7 +472,7 @@ export class AdminAPIClient extends BaseAPIClient {
   /**
    * Generate Gantt chart data
    */
-  async generateGanttChart(projectId: string, _startDate?: string, _endDate?: string): Promise<MCPResponse> {
+  async generateGanttChart(projectId: string): Promise<MCPResponse> {
     try {
       // First get project shortName
       const projectEndpoint = `/api/admin/projects/${projectId}`;
@@ -574,7 +574,7 @@ export class AdminAPIClient extends BaseAPIClient {
   /**
    * Get resource allocation report
    */
-  async getResourceAllocation(projectId: string, _startDate?: string, _endDate?: string): Promise<MCPResponse> {
+  async getResourceAllocation(projectId: string): Promise<MCPResponse> {
     try {
       // First get project shortName
       const projectEndpoint = `/api/admin/projects/${projectId}`;
@@ -649,7 +649,7 @@ export class AdminAPIClient extends BaseAPIClient {
     }
 
     const results: any[] = [];
-    let errors: any[] = [];
+  const errors: any[] = [];
 
     for (const issueId of issueIds) {
       try {

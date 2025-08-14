@@ -365,7 +365,7 @@ export class ProjectsAPIClient extends BaseAPIClient {
    */
   async validateProject(projectId: string): Promise<MCPResponse> {
     try {
-      const result = await this.getProject(projectId);
+      await this.getProject(projectId);
       return ResponseFormatter.formatSuccess(
         { valid: true, accessible: true }, 
         `Project ${projectId} is valid and accessible`
@@ -382,7 +382,7 @@ export class ProjectsAPIClient extends BaseAPIClient {
   /**
    * Get project statistics 
    */
-  async getProjectStatistics(projectId: string, _startDate?: string, _endDate?: string, _includeDetailed: boolean = false): Promise<MCPResponse> {
+  async getProjectStatistics(projectId: string): Promise<MCPResponse> {
     try {
       // Use project summary to get basic stats
       const summary = await this.getProjectIssuesSummary(projectId);

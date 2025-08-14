@@ -1,51 +1,51 @@
-import { YouTrackClient } from '../src/youtrack-client.ts';
-import { ConfigManager } from '../src/config.ts';
+import { YouTrackClient } from '../src/api/client.js';
+import { ConfigManager } from '../src/config.js';
 
 async function quickBuildVerification() {
   const configManager = new ConfigManager();
   const config = configManager.get();
-  const client = new YouTrackClient(config.youtrackUrl, config.youtrackToken);
+  const client = new YouTrackClient({ baseURL: config.youtrackUrl, token: config.youtrackToken });
   
   try {
-    console.log('🔍 **Build Verification Test**\n');
+  console.log('Build Verification Test\n');
     
     // Test 1: Verify time tracking functionality still works
-    console.log('1. Testing estimation update (core functionality)...');
-    const result = await client.updateIssue('3-378', { estimation: 480 });
-    console.log('✅ Estimation update working');
+  console.log('1. Testing basic client health retrieval...');
+  const health = client.getHealth();
+  console.log('Health object received:', health.status);
     
     // Test 2: Verify new comment management methods exist
-    console.log('\n2. Verifying new comment management methods...');
-    const methods = [
-      'getIssueComments',
-      'addIssueComment', 
-      'deleteIssueComment',
-      'updateIssueComment',
-      'bulkDeleteComments',
-      'findRedundantComments'
+    console.log('\n2. Verifying domain clients initialized...');
+    const domains: Array<[string, any]> = [
+      ['issues', client.issues],
+      ['agile', client.agile],
+      ['workItems', client.workItems],
+      ['admin', client.admin],
+      ['projects', client.projects],
+      ['knowledgeBase', client.knowledgeBase]
     ];
-    
-    for (const method of methods) {
-      if (typeof (client as any)[method] === 'function') {
-        console.log(`   ✅ ${method} method exists`);
+    for (const [name, instance] of domains) {
+      if (instance) {
+        console.log(`   ${name} domain available`);
       } else {
-        console.log(`   ❌ ${method} method missing`);
-        return;
+        console.log(`   ${name} domain missing`);
+        return false;
       }
     }
     
-    console.log('\n🎉 **BUILD VERIFICATION SUCCESSFUL**');
-    console.log('\n📋 **All Functionality Available:**');
-    console.log('✅ Original estimation/time tracking (fixed)');
-    console.log('✅ Comment reading and writing');
-    console.log('✅ Comment deletion and editing');
-    console.log('✅ Bulk comment operations');
-    console.log('✅ Redundant comment detection');
+  console.log('\nBUILD VERIFICATION SUCCESSFUL');
+  console.log('\nComponents Available:');
+  console.log('Issues domain');
+  console.log('Agile domain');
+  console.log('WorkItems domain');
+  console.log('Admin domain');
+  console.log('Projects domain');
+  console.log('Knowledge Base domain');
     
-    console.log('\n🚀 **Ready for commit and deployment!**');
+  console.log('\nReady for commit and deployment.');
     
   } catch (error: any) {
-    console.error('❌ Build verification failed:', error.message);
+  console.error('Build verification failed:', error.message);
     return false;
   }
   

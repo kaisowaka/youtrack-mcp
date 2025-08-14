@@ -1,5 +1,6 @@
 import { BaseAPIClient, MCPResponse } from '../base/base-client.js';
 import { ResponseFormatter } from '../base/response-formatter.js';
+import { logger } from '../../logger.js';
 
 export interface IssueCreateParams {
   summary: string;
@@ -86,24 +87,80 @@ export class IssuesAPIClient extends BaseAPIClient {
    * Update an existing issue
    */
   async updateIssue(issueId: string, updates: IssueUpdateParams): Promise<MCPResponse> {
-    const endpoint = `/api/issues/${issueId}`;
-    
-    const updateData = {
-      $type: 'Issue',
-      summary: updates.summary,
-      description: updates.description,
-      ...this.buildCustomFields(updates)
-    };
-    
-    // Remove undefined values
-    Object.keys(updateData).forEach(key => {
-      if (updateData[key] === undefined) {
-        delete updateData[key];
+    // We'll split updates into: basic fields (summary/description), and custom field commands
+    const basicFieldPayload: any = {};
+    if (updates.summary) basicFieldPayload.summary = updates.summary;
+    if (updates.description) basicFieldPayload.description = updates.description;
+
+    const commandParts: string[] = [];
+    // Only push commands for fields provided
+    if (updates.state) commandParts.push(`State ${updates.state}`);
+    if (updates.priority) commandParts.push(`Priority ${updates.priority}`);
+    if (updates.type) commandParts.push(`Type ${updates.type}`);
+    if (updates.assignee) commandParts.push(`Assignee ${updates.assignee}`);
+    if (updates.subsystem) commandParts.push(`Subsystem ${updates.subsystem}`);
+    // Estimation is special – YouTrack uses command "Estimation 2h" etc.
+    if (typeof updates.estimation === 'number') {
+      // Convert minutes to YouTrack time syntax (e.g., 90 -> 1h 30m)
+      const hours = Math.floor(updates.estimation / 60);
+      const minutes = updates.estimation % 60;
+      const estParts = [] as string[];
+      if (hours) estParts.push(`${hours}h`);
+      if (minutes) estParts.push(`${minutes}m`);
+      const estimationStr = estParts.length ? estParts.join(' ') : '0m';
+      commandParts.push(`Estimation ${estimationStr}`);
+    }
+
+    const commandErrors: string[] = [];
+    // Apply each command individually for better error isolation
+    for (const cmd of commandParts) {
+      try {
+        await this.applyCommand(issueId, cmd);
+      } catch (err: any) {
+        const msg = err?.message || String(err);
+        commandErrors.push(`${cmd}: ${msg}`);
+        logger.warn(`Failed to apply command to issue ${issueId}: ${cmd} -> ${msg}`);
       }
-    });
-    
-    const response = await this.post(endpoint, updateData);
-    return ResponseFormatter.formatUpdated(response.data, 'Issue', updates, `Issue ${issueId} updated successfully`);
+    }
+
+    // Apply basic field updates via PATCH (preferred) / fallback to POST if PATCH fails
+    if (Object.keys(basicFieldPayload).length > 0) {
+      try {
+        await this.patch(`/api/issues/${issueId}`, basicFieldPayload);
+      } catch (patchErr) {
+        logger.warn(`PATCH failed for issue ${issueId}, retrying with POST: ${patchErr}`);
+        try {
+          await this.post(`/api/issues/${issueId}`, { $type: 'Issue', ...basicFieldPayload });
+        } catch (postErr) {
+          logger.error(`Failed to update basic fields for issue ${issueId}: ${postErr}`);
+          commandErrors.push(`Basic fields: ${(postErr as Error).message}`);
+        }
+      }
+    }
+
+    // Tags handled via existing buildCustomFields logic (direct POST) if provided separately
+    if (updates.tags && updates.tags.length > 0) {
+      try {
+        await this.post(`/api/issues/${issueId}`, { tags: updates.tags.map(t => ({ name: t })) });
+      } catch (tagErr) {
+        logger.warn(`Failed to update tags for issue ${issueId}: ${tagErr}`);
+        commandErrors.push(`Tags: ${(tagErr as Error).message}`);
+      }
+    }
+
+    // Fetch updated issue for final response
+    let updatedIssue: any = null;
+    try {
+      const refreshed = await this.get(`/api/issues/${issueId}`, { fields: 'id,idReadable,summary,description,customFields(name,value(name)),project(shortName),tags(name)' });
+      updatedIssue = refreshed.data;
+    } catch (fetchErr) {
+      logger.warn(`Could not fetch refreshed issue ${issueId}: ${fetchErr}`);
+    }
+
+    const meta: any = { appliedCommands: commandParts.length, commandErrorsCount: commandErrors.length };
+    if (commandErrors.length) meta.commandErrors = commandErrors;
+
+    return ResponseFormatter.formatUpdated(updatedIssue || { id: issueId }, 'Issue', updates, `Issue ${issueId} updated${commandErrors.length ? ' with partial errors' : ' successfully'}`, meta);
   }
   
   /**
@@ -454,7 +511,6 @@ export class IssuesAPIClient extends BaseAPIClient {
       try {
         await this.applyCommand(issueId, command);
       } catch (error) {
-        // Log but don't fail the entire operation
         console.warn(`Failed to apply command "${command}" to issue ${issueId}:`, error);
       }
     }
@@ -464,13 +520,14 @@ export class IssuesAPIClient extends BaseAPIClient {
    * Apply a command to an issue
    */
   private async applyCommand(issueId: string, command: string): Promise<void> {
+    // Use idReadable format; YouTrack expects just the command in query, issues identified separately
     const endpoint = `/api/commands`;
     await this.post(endpoint, {
-      query: `${issueId} ${command}`,
-      caret: command.length + issueId.length + 1,
-      issues: [{ 
-        id: issueId 
-      }]
+      query: command,
+      issues: [
+        { idReadable: issueId },
+        { id: issueId } // include internal id fallback
+      ]
     });
   }
 

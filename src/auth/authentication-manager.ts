@@ -37,7 +37,7 @@ interface StoredAuth {
 }
 
 /**
- * Enhanced Authentication Manager
+ * Authentication Manager
  * Supports both token-based and OAuth2 authentication
  */
 export class AuthenticationManager {
@@ -85,7 +85,7 @@ export class AuthenticationManager {
         // Check if token needs refresh
         if (OAuth2Manager.isTokenExpired(tokens) && this.oauth2Manager) {
           try {
-            logger.info('🔄 Refreshing OAuth2 token...');
+            logger.info('Refreshing OAuth2 token');
             const newTokens = await this.oauth2Manager.refreshToken(tokens.refresh_token);
             
             // Update stored authentication
@@ -116,7 +116,7 @@ export class AuthenticationManager {
   async authenticate(): Promise<string> {
     // If token is provided, use token-based authentication
     if (this.config.token && !this.config.preferOAuth2) {
-      logger.info('🔑 Using token-based authentication');
+  logger.info('Using token-based authentication');
       
       this.currentAuth = {
         type: 'token',
@@ -131,7 +131,7 @@ export class AuthenticationManager {
 
     // Use OAuth2 authentication
     if (this.oauth2Manager) {
-      logger.info('🔐 Starting OAuth2 authentication flow...');
+  logger.info('Starting OAuth2 authentication flow');
       
       try {
         const tokens = await this.oauth2Manager.authenticate();
@@ -144,7 +144,7 @@ export class AuthenticationManager {
         };
         
         this.saveStoredAuth();
-        logger.info('✅ OAuth2 authentication successful');
+  logger.info('OAuth2 authentication successful');
         
         return tokens.access_token;
         
@@ -153,7 +153,7 @@ export class AuthenticationManager {
         
         // Fall back to token if available
         if (this.config.token) {
-          logger.info('🔄 Falling back to token-based authentication');
+          logger.info('Falling back to token-based authentication');
           return this.config.token;
         }
         
@@ -178,7 +178,7 @@ export class AuthenticationManager {
 
     this.currentAuth = null;
     this.clearStoredAuth();
-    logger.info('🔓 Signed out successfully');
+  logger.info('Signed out successfully');
   }
 
   /**
@@ -225,9 +225,9 @@ export class AuthenticationManager {
         // Validate stored authentication
         if (authData.baseUrl === this.config.baseUrl) {
           this.currentAuth = authData;
-          logger.debug('📁 Loaded stored authentication');
+          logger.debug('Loaded stored authentication');
         } else {
-          logger.debug('🔄 Base URL changed, clearing stored authentication');
+          logger.debug('Base URL changed, clearing stored authentication');
           this.clearStoredAuth();
         }
       }
@@ -244,7 +244,7 @@ export class AuthenticationManager {
     try {
       if (this.currentAuth) {
         writeFileSync(this.authFile, JSON.stringify(this.currentAuth, null, 2));
-        logger.debug('💾 Saved authentication to file');
+  logger.debug('Saved authentication to file');
       }
     } catch (error) {
       logger.warn('Failed to save authentication', error);
@@ -313,10 +313,10 @@ export class AuthenticationManager {
 
       if (response.ok) {
         const user = await response.json();
-        logger.info(`✅ Authentication test successful - logged in as ${user.name || user.login}`);
+  logger.info(`Authentication test successful - logged in as ${user.name || user.login}`);
         return true;
       } else {
-        logger.error(`❌ Authentication test failed: ${response.status} ${response.statusText}`);
+  logger.error(`Authentication test failed: ${response.status} ${response.statusText}`);
         return false;
       }
       

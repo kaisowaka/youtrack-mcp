@@ -23,15 +23,16 @@ function analyzeOpenAPICoverage() {
   // Extract all OpenAPI paths
   const paths: OpenAPIPath[] = [];
   
-  for (const [pathPattern, pathData] of Object.entries(openApiSpec.paths)) {
-    const methods = Object.keys(pathData).filter(key => 
+  for (const [pathPattern, pathData] of Object.entries(openApiSpec.paths as Record<string, any>)) {
+    const record = pathData as Record<string, any>;
+    const methods = Object.keys(record).filter(key => 
       ['get', 'post', 'put', 'delete', 'patch'].includes(key.toLowerCase())
     );
     
     paths.push({
       path: pathPattern,
       methods,
-      description: (pathData as any).description,
+  description: record.description,
       implemented: false, // Will be determined by analysis
       mcpTools: []
     });
@@ -50,11 +51,11 @@ function analyzeOpenAPICoverage() {
     customFields: paths.filter(p => p.path.includes('/customFieldSettings'))
   };
   
-  console.log('🔍 OpenAPI Coverage Analysis');
+  console.log('OpenAPI Coverage Analysis');
   console.log('==================================');
   
   for (const [domain, domainPaths] of Object.entries(domains)) {
-    console.log(`\n📊 ${domain.toUpperCase()} Domain:`);
+  console.log(`\n${domain.toUpperCase()} Domain:`);
     console.log(`   Total Endpoints: ${domainPaths.length}`);
     
     // Check implementation status
@@ -68,7 +69,7 @@ function analyzeOpenAPICoverage() {
     console.log(`   Coverage: ${((implemented.length / domainPaths.length) * 100).toFixed(1)}%`);
     
     if (domainPaths.length - implemented.length > 0) {
-      console.log(`   🔴 Missing ${domainPaths.length - implemented.length} endpoints`);
+  console.log(`   Missing ${domainPaths.length - implemented.length} endpoints`);
     }
   }
   
@@ -85,13 +86,13 @@ function analyzeOpenAPICoverage() {
     '/users/{userID}/profiles'
   ];
   
-  console.log('\n🎯 High-Value Missing Endpoints:');
+  console.log('\nHigh-Value Missing Endpoints:');
   highValueMissing.forEach(endpoint => {
     console.log(`   - ${endpoint}`);
   });
   
   // Generate improvement recommendations
-  console.log('\n💡 Recommendations:');
+  console.log('\nRecommendations:');
   console.log('   1. Implement OpenAPI client generation');
   console.log('   2. Add missing high-value endpoints');
   console.log('   3. Create domain-specific API modules');

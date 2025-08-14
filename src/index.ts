@@ -23,7 +23,7 @@ import {
   suggestToolName
 } from './validation.js';
 import { AuthenticationManager } from './auth/authentication-manager.js';
-import { EnhancedMCPTools } from './tools/enhanced-tools.js';
+import { CoreTools } from './tools/core-tools.js';
 
 // Load environment variables
 dotenv.config();
@@ -33,7 +33,7 @@ const toolDefinitions = [
   // PROJECT MANAGEMENT TOOLS
   {
     name: 'projects',
-    description: '🏗️  Comprehensive project management: list, get details, validate, get custom fields, and manage project configurations',
+    description: 'Project management: list projects, get details, validate access, list custom fields, retrieve statistics',
     inputSchema: {
       type: 'object',
       properties: {
@@ -59,7 +59,7 @@ const toolDefinitions = [
   // ISSUE MANAGEMENT TOOLS  
   {
     name: 'issues',
-    description: '🎯 Complete issue lifecycle management: create, update, query, state changes, comments, and advanced operations',
+    description: 'Issue lifecycle: create, update, query/search, change state, comment, start/complete work',
     inputSchema: {
       type: 'object',
       properties: {
@@ -116,7 +116,7 @@ const toolDefinitions = [
   // ADVANCED QUERY TOOL
   {
     name: 'query',
-    description: '🔍 Basic YouTrack query using raw YouTrack syntax (for advanced users familiar with YouTrack query language)',
+    description: 'Raw YouTrack query using native syntax (returns issues matching the expression)',
     inputSchema: {
       type: 'object',
       properties: {
@@ -142,7 +142,7 @@ const toolDefinitions = [
     // COMMENT MANAGEMENT TOOLS
   {
     name: 'comments',
-    description: '💬 Issue comments management: get, add, update, delete comments',
+    description: 'Issue comments: list, add, update, delete',
     inputSchema: {
       type: 'object',
       properties: {
@@ -171,7 +171,7 @@ const toolDefinitions = [
   // AGILE MANAGEMENT TOOLS
   {
     name: 'agile_boards',
-    description: '🏃‍♂️ Agile board and sprint management: boards, sprints, assignments, and progress tracking',
+    description: 'Agile boards and sprints: list boards/sprints, get details, create sprints, assign issues',
     inputSchema: {
       type: 'object',
       properties: {
@@ -216,7 +216,7 @@ const toolDefinitions = [
   // KNOWLEDGE MANAGEMENT TOOLS
   {
     name: 'knowledge_base',
-    description: '📚 Knowledge base management: articles, search, create, update, organize',
+    description: 'Knowledge base: list, get, create, update, delete, search articles',
     inputSchema: {
       type: 'object',
       properties: {
@@ -262,7 +262,7 @@ const toolDefinitions = [
   // ANALYTICS & REPORTING
   {
     name: 'analytics',
-    description: '📊 Advanced analytics and reporting: project statistics, time tracking, progress reports, Gantt charts',
+    description: 'Analytics and reporting: project statistics, time tracking, Gantt, critical path, resource allocation, milestone progress',
     inputSchema: {
       type: 'object',
       properties: {
@@ -299,7 +299,7 @@ const toolDefinitions = [
   // ADMIN OPERATIONS
   {
     name: 'admin',
-    description: '⚙️  Administrative operations: user management, project setup, system configuration',
+    description: 'Administrative operations: search users, inspect fields, list field values, bulk update, create dependencies',
     inputSchema: {
       type: 'object',
       properties: {
@@ -345,7 +345,7 @@ const toolDefinitions = [
   // TIME TRACKING & WORK ITEMS
   {
     name: 'time_tracking',
-    description: '⏱️ Time tracking and work item management: log time, track progress, generate reports',
+    description: 'Time tracking & work items: log time, manage entries and work items, generate reports',
     inputSchema: {
       type: 'object',
       properties: {
@@ -406,7 +406,7 @@ const toolDefinitions = [
   // AUTHENTICATION MANAGEMENT
   {
     name: 'auth',
-    description: '🔐 Authentication management: browser-based OAuth2 login, token management, authentication status',
+    description: 'Authentication: status, OAuth2 login, logout, re-authenticate, validate token',
     inputSchema: {
       type: 'object',
       properties: {
@@ -423,7 +423,7 @@ const toolDefinitions = [
   // REAL-TIME NOTIFICATIONS
   {
     name: 'notifications',
-    description: '📱 Real-time notification system: receive live YouTrack updates, manage notification settings',
+    description: 'Notifications: status, list, clear, subscribe/unsubscribe, list subscriptions',
     inputSchema: {
       type: 'object',
       properties: {
@@ -468,7 +468,7 @@ const toolDefinitions = [
   // NOTIFICATION SUBSCRIPTIONS
   {
     name: 'subscriptions',
-    description: '🔔 Notification subscription management: create, update, delete, and manage notification subscriptions',
+    description: 'Notification subscriptions: create, update, delete, list',
     inputSchema: {
       type: 'object',
       properties: {
@@ -515,7 +515,7 @@ class YouTrackMCPServer {
   private clientFactory: ClientFactory;
   private config: ConfigManager;
   private authManager: AuthenticationManager;
-  private enhancedTools: EnhancedMCPTools;
+  private coreTools: CoreTools;
 
   constructor() {
     this.config = new ConfigManager();
@@ -531,9 +531,9 @@ class YouTrackMCPServer {
       autoRefresh: true
     });
     
-    // Initialize enhanced tools with authentication manager
-    this.enhancedTools = new EnhancedMCPTools(this.authManager);
-    logger.info('🚀 Initializing YouTrack MCP Server', { 
+  // Initialize core tools with authentication manager
+  this.coreTools = new CoreTools(this.authManager);
+  logger.info('Initializing YouTrack MCP Server', { 
       url: youtrackUrl, 
       tokenLength: youtrackToken?.length,
       toolCount: toolDefinitions.length 
@@ -549,7 +549,7 @@ class YouTrackMCPServer {
       enableCache: true
     });
 
-    logger.info('✅ Client Factory initialized with modular architecture');
+  logger.info('Client Factory initialized');
 
     this.server = new Server(
       {
@@ -618,13 +618,13 @@ class YouTrackMCPServer {
             return await this.handleTimeTracking(client, args);
           
           case 'auth':
-            return await this.enhancedTools.handleAuthManage(args);
+            return await this.coreTools.handleAuthManage(args);
           
           case 'notifications':
-            return await this.enhancedTools.handleNotifications(args);
+            return await this.coreTools.handleNotifications(args);
           
           case 'subscriptions':
-            return await this.enhancedTools.handleSubscriptions(args);
+            return await this.coreTools.handleSubscriptions(args);
           
           default: {
             const suggestion = suggestToolName(name);
@@ -984,20 +984,20 @@ class YouTrackMCPServer {
         this.config.get().youtrackUrl || ''
       );
       await notificationManager.initialize(await this.authManager.getAuthToken());
-      logger.info('📱 Notification system initialized (using polling mode)');
+  logger.info('Notification system initialized (polling mode)');
     } catch (error) {
       logger.warn('Failed to initialize notification system, continuing without real-time notifications', error);
     }
     
-    logger.info(`🎉 YouTrack MCP Server running with ${toolDefinitions.length} powerful tools!`);
+  logger.info(`YouTrack MCP Server running with ${toolDefinitions.length} tools`);
   }
 
   /**
    * Cleanup resources on shutdown
    */
   async cleanup(): Promise<void> {
-    this.enhancedTools.cleanup();
-    logger.info('🧹 Server resources cleaned up');
+  this.coreTools.cleanup();
+  logger.info('Server resources cleaned up');
   }
 }
 
@@ -1005,13 +1005,13 @@ const server = new YouTrackMCPServer();
 
 // Graceful shutdown handling
 process.on('SIGINT', async () => {
-  logger.info('🛑 Received SIGINT, shutting down gracefully...');
+  logger.info('Received SIGINT, shutting down');
   await server.cleanup();
   process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
-  logger.info('🛑 Received SIGTERM, shutting down gracefully...');
+  logger.info('Received SIGTERM, shutting down');
   await server.cleanup();
   process.exit(0);
 });

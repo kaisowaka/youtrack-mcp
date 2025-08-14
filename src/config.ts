@@ -1,5 +1,4 @@
 import * as fs from 'fs';
-import * as path from 'path';
 import { config as dotenvConfig } from 'dotenv';
 
 // Load .env file

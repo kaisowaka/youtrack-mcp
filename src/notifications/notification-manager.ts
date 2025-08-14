@@ -94,7 +94,7 @@ export class NotificationManager extends EventEmitter {
     
     try {
       await this.connect();
-      logger.info('📱 Notification system initialized');
+  logger.info('Notification system initialized');
     } catch (error) {
       logger.error('Failed to initialize notification system', error);
       throw error;
@@ -115,8 +115,8 @@ export class NotificationManager extends EventEmitter {
         // Instead, we'll use a different approach - disable actual WebSocket connection
         // and use polling or server-sent events
         
-        logger.info('� YouTrack WebSocket notifications not publicly available');
-        logger.info('🔄 Using alternative notification method (polling-based)');
+  logger.info('YouTrack WebSocket notifications not publicly available');
+  logger.info('Using alternative notification method (polling-based)');
         
         // Don't attempt WebSocket connection to prevent 401 errors
         this.isConnected = false;
@@ -137,7 +137,7 @@ export class NotificationManager extends EventEmitter {
    */
   private handleDisconnection(): void {
     // Since we're not using actual WebSocket, no reconnection needed
-    logger.info('� Notification system using polling mode - no reconnection needed');
+  logger.info('Notification system using polling mode - no reconnection needed');
   }
 
   /**
@@ -146,7 +146,7 @@ export class NotificationManager extends EventEmitter {
   private subscribeToEvents(): void {
     // Since WebSocket is not available, we'll implement polling-based notifications
     // This method is now a placeholder for potential future polling implementation
-    logger.info('📡 Event subscription ready for polling-based notifications');
+  logger.info('Event subscription ready for polling-based notifications');
   }
 
   /**
@@ -166,7 +166,7 @@ export class NotificationManager extends EventEmitter {
         // Emit event for immediate subscribers
         this.emit('notification', event);
         
-        logger.debug(`📨 Notification received: ${event.type} - ${event.title}`);
+  logger.debug(`Notification received: ${event.type} - ${event.title}`);
       }
       
     } catch (error) {
@@ -363,7 +363,7 @@ export class NotificationManager extends EventEmitter {
    */
   addSubscription(subscription: NotificationSubscription): void {
     this.subscriptions.set(subscription.id, subscription);
-    logger.debug(`📋 Added notification subscription: ${subscription.name}`);
+  logger.debug(`Added notification subscription: ${subscription.name}`);
   }
 
   /**
@@ -415,6 +415,6 @@ export class NotificationManager extends EventEmitter {
   disconnect(): void {
     // No WebSocket to close since we're using polling mode
     this.isConnected = false;
-    logger.info('📱 Notification system disconnected');
+  logger.info('Notification system disconnected');
   }
 }

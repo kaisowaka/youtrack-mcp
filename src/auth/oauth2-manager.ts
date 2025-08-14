@@ -63,7 +63,7 @@ export class OAuth2Manager {
         const authUrl = this.buildAuthorizationUrl(codeChallenge);
 
         // Open browser
-        logger.info('🔐 Starting OAuth2 authentication flow...');
+  logger.info('Starting OAuth2 authentication flow');
         logger.info('Opening browser for authentication...');
         
         this.openBrowser(authUrl);
@@ -122,9 +122,9 @@ export class OAuth2Manager {
         scope: tokenData.scope || this.config.scopes.join(' ')
       };
 
-    } catch (error) {
-      logger.error('Token refresh failed', error);
-      throw error;
+  } catch (err) {
+      logger.error('Token refresh failed', err);
+      throw err;
     }
   }
 
@@ -146,7 +146,7 @@ export class OAuth2Manager {
         }).toString(),
       });
       
-      logger.info('🔓 Access token revoked successfully');
+  logger.info('Access token revoked successfully');
 
     } catch (error) {
       logger.warn('Failed to revoke token', error);
@@ -175,7 +175,7 @@ export class OAuth2Manager {
             res.end(`
               <html>
                 <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-                  <h2 style="color: #d32f2f;">❌ Authentication Failed</h2>
+                  <h2 style="color: #d32f2f;">Authentication Failed</h2>
                   <p>Error: ${error}</p>
                   <p>You can close this window and try again.</p>
                 </body>
@@ -189,7 +189,7 @@ export class OAuth2Manager {
             res.end(`
               <html>
                 <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-                  <h2 style="color: #d32f2f;">❌ Authentication Failed</h2>
+                  <h2 style="color: #d32f2f;">Authentication Failed</h2>
                   <p>Invalid authorization code or state mismatch.</p>
                   <p>You can close this window and try again.</p>
                 </body>
@@ -205,7 +205,7 @@ export class OAuth2Manager {
             res.end(`
               <html>
                 <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-                  <h2 style="color: #4caf50;">✅ Authentication Successful!</h2>
+                  <h2 style="color: #4caf50;">Authentication Successful</h2>
                   <p>You have successfully authenticated with YouTrack.</p>
                   <p>You can close this window and return to your application.</p>
                   <script>setTimeout(() => window.close(), 3000);</script>
@@ -220,7 +220,7 @@ export class OAuth2Manager {
             res.end(`
               <html>
                 <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-                  <h2 style="color: #d32f2f;">❌ Token Exchange Failed</h2>
+                  <h2 style="color: #d32f2f;">Token Exchange Failed</h2>
                   <p>Failed to exchange authorization code for tokens.</p>
                   <p>You can close this window and try again.</p>
                 </body>
@@ -236,7 +236,7 @@ export class OAuth2Manager {
     });
 
     this.server.listen(this.config.callbackPort, 'localhost', () => {
-      logger.info(`🔗 OAuth callback server listening on port ${this.config.callbackPort}`);
+  logger.info(`OAuth callback server listening on port ${this.config.callbackPort}`);
     });
 
     this.server.on('error', (error) => {
@@ -313,7 +313,7 @@ export class OAuth2Manager {
   private async openBrowser(url: string): Promise<void> {
     try {
       await open(url);
-    } catch (error) {
+    } catch {
       logger.error('Failed to open browser automatically');
       logger.info('Please open the following URL in your browser:');
       logger.info(url);
