@@ -1,339 +1,219 @@
-# YouTrack MCP Server
+# YouTrack MCP
 
-A comprehensive Model Context Protocol (MCP) server for YouTrack project management. Provides 12 powerful tools for complete project lifecycle management through a single, unified interface.
+A comprehensive YouTrack API integration for message channel providers (MCP) implemented in TypeScript. This server provides a robust interface to YouTrack's functionalities including issue management, sprint planning, and knowledge base operations.
 
-## ✨ Enterprise Features
-
-🔐 **OAuth2 Authentication**: Browser-based authentication with PKCE security
-📱 **Real-Time Notifications**: WebSocket-based live updates from YouTrack
-🔔 **Smart Subscriptions**: Customizable notification filters and delivery
-🛡️ **Enhanced Security**: Automatic token refresh and secure credential storage
-
-*See [ENTERPRISE-FEATURES.md](ENTERPRISE-FEATURES.md) for complete authentication and notification guide.*
+![CI](https://github.com/yourusername/youtrack-mcp-ts/actions/workflows/ci.yml/badge.svg)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Features
 
-- **12 Unified Tools**: Clean, intuitive tool names including enterprise authentication and notifications
-- **Complete Project Management**: Issues, projects, agile boards, time tracking
-- **Enterprise Authentication**: OAuth2 with PKCE + traditional token support
-- **Real-Time Updates**: WebSocket notifications with smart filtering
-- **Modular Architecture**: Clean TypeScript implementation with domain-specific APIs
-- **Advanced Capabilities**: Analytics, reporting, knowledge base management
-- **Robust Implementation**: Comprehensive error handling, caching, and retry logic
-- **Comprehensive Validation**: Parameter validation, format checking, and smart error suggestions
-- **Error Prevention**: Backward compatibility mapping and resource existence verification
+- Complete YouTrack REST API access
+- Issue management (create, update, search, comment)
+- Sprint and agile board operations
+- Knowledge base article management
+- Custom field support
+- Time tracking integration
+- Advanced query capabilities
+- State management workflow
+- Configurable caching
+- Webhook support
 
-## Transformation Story
+## Installation
 
-This MCP server underwent a major architectural transformation to achieve enterprise-grade quality:
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/youtrack-mcp-ts.git
+cd youtrack-mcp-ts
 
-**From Complex to Simple**: Originally started with 71+ individual tools with complex interdependencies. Through systematic refactoring, we consolidated these into **12 powerful unified tools** - including enterprise authentication and real-time notifications - a **85% reduction** while adding advanced features.
+# Install dependencies
+npm install
 
-**From Monolithic to Modular**: Replaced a single massive client with clean, domain-specific API clients (`IssuesAPIClient`, `ProjectsAPIClient`, `AgileAPIClient`, etc.) built on a robust `BaseAPIClient` foundation.
-
-**From Generic to Specialized**: Removed all vendor-specific "enhanced" branding in favor of clean, generic naming that focuses on functionality rather than marketing terms.
-
-**Enterprise Ready**: Achieved 100% test pass rate with comprehensive error handling, intelligent caching, and robust retry logic. The result is a maintainable, scalable MCP server ready for enterprise use.
-
-*See [TRANSFORMATION-SUMMARY.md](TRANSFORMATION-SUMMARY.md) for detailed technical transformation details.*
-
-## Available Tools
-
-### 🔐 Enterprise Authentication
-- **`auth_manage`** - OAuth2 browser authentication, token management, status
-- **`notifications`** - Real-time WebSocket notifications from YouTrack
-- **`subscriptions`** - Custom notification filters and subscription management
-
-### Core Management
-- **`projects`** - Project management (list, details, validation, custom fields)
-- **`issues`** - Complete issue lifecycle (create, update, query, state changes)
-- **`query`** - Advanced YouTrack query syntax for power users
-
-### Collaboration & Communication
-- **`comments`** - Issue comment management (add, edit, delete)
-- **`knowledge_base`** - Documentation and article management
-
-### Agile & Planning  
-- **`agile_boards`** - Sprint and board management (boards, sprints, assignments)
-- **`analytics`** - Project statistics, reports, Gantt charts
-
-### Operations
-- **`time_tracking`** - Time logging, work items, reporting
-- **`admin`** - User management, bulk operations, system configuration
-
-## Quick Start
-
-### Prerequisites
-- Node.js 18+ 
-- YouTrack instance with API access
-- Valid YouTrack permanent token
-
-### Installation
-
-1. **Clone and Setup**
-   ```bash
-   git clone https://github.com/itsalfredakku/youtrack-mcp.git
-   cd youtrack-mcp
-   npm install
-   ```
-
-2. **Configure Environment**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your YouTrack details
-   ```
-
-3. **Build and Test**
-   ```bash
-   npm run build
-   npm test
-   ```
-
-### Configuration
-
-Create `.env` file with your YouTrack credentials:
-
-```env
-YOUTRACK_URL=https://your-instance.youtrack.cloud
-YOUTRACK_TOKEN=perm-your-permanent-token
-PROJECT_ID=YOUR-PROJECT  # Optional default project
+# Build the project
+npm run build
 ```
 
-### MCP Integration
+## Configuration
 
-Add to your MCP client configuration (e.g., Claude Desktop):
+Copy the example environment file and configure your settings:
+
+```bash
+cp .env.example .env
+```
+
+Edit the `.env` file with your YouTrack details:
+
+```properties
+# YouTrack instance URL (without trailing slash)
+YOUTRACK_URL=https://your-instance.youtrack.cloud
+
+# YouTrack permanent token
+# Generate from: Profile > Account Security > Tokens
+YOUTRACK_TOKEN=your-permanent-token-here
+
+# Optional: Default project ID
+PROJECT_ID=PROJECT-1
+
+# Optional: Enable webhooks (true/false)
+ENABLE_WEBHOOKS=false
+
+# Optional: Webhook server port (default: 3000)
+WEBHOOK_PORT=3000
+
+# Optional: Webhook secret for signature verification
+WEBHOOK_SECRET=your-webhook-secret
+
+# Optional: Log level (error, warn, info, debug)
+LOG_LEVEL=info
+
+# Optional: Cache TTL in milliseconds (default: 300000 = 5 minutes)
+CACHE_TTL=300000
+
+# Optional: Enable cache (true/false, default: true)
+CACHE_ENABLED=true
+```
+
+## Usage
+
+Start the MCP server:
+
+```bash
+npm start
+```
+
+For development with automatic reloading:
+
+```bash
+npm run dev
+```
+
+## API Tools
+
+The YouTrack MCP server provides multiple tools for interacting with YouTrack:
+
+### Issue Management
+
+- `create_issue`: Create a new issue in YouTrack
+- `get_issue`: Retrieve issue details
+- `update_issue`: Update an existing issue
+- `add_issue_comment`: Add a comment to an issue
+- `get_issue_comments`: Retrieve comments on an issue
+- `search_issues`: Search for issues using YouTrack query language
+
+### State Management
+
+- `start_working_on_issue`: Begin work on an issue and change its state
+- `change_issue_state`: Transition an issue to a different state
+- `complete_issue`: Mark an issue as completed
+
+### Sprint Management
+
+- `list_sprints`: List all sprints in a board
+- `create_sprint`: Create a new sprint
+- `assign_issue_to_sprint`: Add an issue to a sprint
+- `get_sprint_issues`: Get all issues in a sprint
+
+### Time Tracking
+
+- `log_work`: Log time spent on an issue
+- `get_time_tracking`: Retrieve time tracking records for an issue
+
+### Knowledge Base
+
+- `create_article`: Create a new knowledge base article
+- `update_article`: Update an existing article
+- `get_article`: Retrieve article details
+- `search_articles`: Search for articles
+
+### Project Management
+
+- `list_projects`: List all accessible projects
+- `get_project_details`: Get detailed information about a project
+
+## Development
+
+### Prerequisites
+
+- Node.js 18.x or later
+- npm 8.x or later
+
+### Setup Development Environment
+
+```bash
+# Install dependencies
+npm install
+
+# Run in development mode
+npm run dev
+```
+
+### Testing
+
+```bash
+# Run all tests
+npm test
+
+# Run specific test suites
+npm run test:queries
+npm run test:issues
+
+# Check code quality
+npm run lint
+```
+
+### Build
+
+```bash
+# Build the project
+npm run build
+
+# Verify the build
+npm run verify-build
+```
+
+## API Reference
+
+The YouTrack MCP server exposes a standardized API following the Message Channel Provider protocol. Each tool accepts specific parameters and returns standardized responses.
+
+For example, to create an issue:
 
 ```json
 {
-  "servers": {
-    "youtrack": {
-      "command": "node",
-      "args": ["path/to/youtrack-mcp/dist/index.js"],
-      "env": {
-        "YOUTRACK_URL": "https://your-instance.youtrack.cloud",
-        "YOUTRACK_TOKEN": "perm-your-permanent-token",
-        "PROJECT_ID": "YOUR-PROJECT"
-      }
-    }
+  "tool": "create_issue",
+  "params": {
+    "projectId": "PROJECT-1",
+    "summary": "Issue title",
+    "description": "Detailed description",
+    "type": "Task",
+    "priority": "Normal"
   }
 }
 ```
 
-## Usage Examples
+## Troubleshooting
 
-### Project Management
-```
-List all projects with details
-Get project custom fields
-Validate project access
-```
+Common issues and their solutions:
 
-### Issue Operations
-```
-Create new issues with custom fields
-Query issues: "state: Open priority: High"
-Update issue states with comments
-Complete issues with resolution
-```
-
-### Time Tracking
-```
-Log time: "2h development work on authentication"
-Get time entries with date filtering
-Generate time reports by project/user
-```
-
-### Agile Workflows
-```
-List agile boards and sprints
-Assign issues to sprints  
-Create new sprints with dates
-Track sprint progress
-```
-
-## Tool Details
-
-### `projects` Tool
-- **Actions**: list, get, validate, fields, status
-- **Use Cases**: Project discovery, validation, custom field management
-- **Example**: Get all projects with custom field definitions
-
-### `issues` Tool  
-- **Actions**: create, update, get, query, search, state, complete, start
-- **Use Cases**: Full issue lifecycle management
-- **Example**: Create bug with priority, assign to user, set due date
-
-### `query` Tool
-- **Format**: Raw YouTrack query syntax
-- **Use Cases**: Power user searches, complex filtering
-- **Example**: `"project: PROJ state: Open assignee: me created: today"`
-
-### `comments` Tool
-- **Actions**: get, add, update, delete
-- **Use Cases**: Issue discussion, progress updates
-- **Example**: Add resolution comment when closing issue
-
-### `agile_boards` Tool
-- **Actions**: boards, board_details, sprints, sprint_details, create_sprint, assign_issue
-- **Use Cases**: Sprint planning, agile workflows
-- **Example**: Assign issues to current sprint, create new sprint
-
-### `knowledge_base` Tool
-- **Actions**: list, get, create, update, delete, search
-- **Use Cases**: Documentation, process guides, troubleshooting
-- **Example**: Create project documentation, search existing articles
-
-### `analytics` Tool
-- **Report Types**: project_stats, time_tracking, gantt, critical_path, resource_allocation, milestone_progress
-- **Use Cases**: Project insights, progress tracking, resource planning
-- **Example**: Generate Gantt chart for project timeline
-
-### `time_tracking` Tool
-- **Actions**: log_time, get_time_entries, update_time_entry, delete_time_entry, get_work_items, create_work_item, update_work_item, time_reports
-- **Use Cases**: Time logging, productivity tracking, billing
-- **Example**: Log "2h" with description, generate weekly time report
-
-### `admin` Tool
-- **Operations**: search_users, project_fields, field_values, bulk_update, dependencies
-- **Use Cases**: User management, system configuration, bulk operations
-- **Example**: Bulk update multiple issues, manage user permissions
-
-## Architecture
-
-### Clean Design
-- **Base Client**: Generic HTTP client with caching and error handling
-- **Domain APIs**: Specialized clients for each functional area
-- **Response Formatting**: Consistent MCP response structure
-- **Type Safety**: Full TypeScript support with proper interfaces
-
-### Key Components
-```
-src/
-├── api/
-│   ├── base/
-│   │   ├── base-client.ts         # Core HTTP client
-│   │   ├── response-formatter.ts  # MCP response formatting
-│   │   ├── cache-manager.ts       # Intelligent caching
-│   │   └── error-handler.ts       # Robust error handling
-│   ├── domains/
-│   │   ├── issues-api.ts          # Issue management
-│   │   ├── projects-api.ts        # Project operations
-│   │   ├── agile-boards-api.ts    # Sprint/board management
-│   │   ├── workitems-api.ts       # Time tracking
-│   │   ├── knowledge-base-api.ts  # Documentation
-│   │   └── admin-api.ts           # Administrative functions
-│   └── client.ts                  # Main client factory
-├── config.ts                      # Configuration management
-├── logger.ts                      # Structured logging
-└── index.ts                       # MCP server entry point
-```
-
-## Development
-
-### Building
-```bash
-npm run build       # Compile TypeScript
-npm run watch       # Watch mode for development
-```
-
-### Testing
-```bash
-npm test           # Run test queries
-npm run verify     # Verify build integrity
-```
-
-### Debugging
-```bash
-# Enable debug logging
-DEBUG=youtrack-mcp npm start
-
-# Test specific tool
-echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"projects","arguments":{"action":"list"}}}' | node dist/index.js
-```
-
-## Production Deployment
-
-### Docker Support
-```dockerfile
-FROM node:18-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --only=production
-COPY dist/ ./dist/
-CMD ["node", "dist/index.js"]
-```
-
-### Environment Variables
-- `YOUTRACK_URL` - Your YouTrack instance URL (required)
-- `YOUTRACK_TOKEN` - Permanent token with appropriate permissions (required)  
-- `PROJECT_ID` - Default project ID for operations (optional)
-- `LOG_LEVEL` - Logging level: error, warn, info, debug (default: info)
-- `CACHE_TTL` - Cache time-to-live in seconds (default: 300)
-
-### Security Considerations
-- Store tokens securely (environment variables, secrets management)
-- Use permanent tokens with minimal required permissions
-- Enable HTTPS for YouTrack instance
-- Consider IP restrictions for production deployments
-
-## Error Prevention
-
-The MCP server includes comprehensive error prevention measures:
-
-### Parameter Validation
-- **Project ID Validation**: Format checking (PROJECT, TEST-1, 0-18) and existence verification
-- **Issue ID Validation**: Proper format validation (PROJECT-123, 3-511)  
-- **Date Format Validation**: YYYY-MM-DD format with real date verification
-- **Duration Validation**: Time format validation (2h, 30m, 1d)
-
-### Backward Compatibility
-- **Tool Name Mapping**: Automatic mapping from legacy tool names (e.g., `query_issues` → `query`)
-- **Smart Error Suggestions**: Helpful suggestions for unknown or deprecated tools
-- **Migration Guidance**: Clear guidance when tools have been consolidated
-
-### Error Examples
-```bash
-# Invalid project ID
-Error: Invalid project ID format: 'invalid-id'. Must be a project short name (e.g., 'PROJECT', 'TEST-1') or internal ID (e.g., '0-1', '3-32')
-
-# Unknown tool
-Error: Unknown tool: query_issues. Did you mean 'query'? The tool 'query_issues' has been consolidated into 'query'.
-
-# Missing required parameter  
-Error: Parameter validation failed: issueId is required and cannot be empty
-```
-
-See [ERROR-PREVENTION.md](ERROR-PREVENTION.md) for detailed error prevention documentation.
-
-## API Coverage
-
-This MCP server provides comprehensive YouTrack API coverage:
-
-- **Issues API**: 25+ endpoints covering full issue lifecycle
-- **Projects API**: 20+ endpoints for project management
-- **Agile API**: 15+ endpoints for sprint and board operations
-- **Time Tracking API**: 10+ endpoints for work item management
-- **Admin API**: 15+ endpoints for user and system management
-- **Knowledge Base API**: 8+ endpoints for documentation management
+1. **Authentication errors**: Ensure your YouTrack token has the necessary permissions
+2. **Project not found**: Verify the project ID exists and is accessible to your account
+3. **Invalid query syntax**: Check the YouTrack query language documentation for proper syntax
+4. **State transition issues**: Make sure the workflow allows the state change you're attempting
 
 ## Contributing
 
+Please read our [CONTRIBUTING.md](CONTRIBUTING.md) for details on the process for submitting pull requests.
+
 1. Fork the repository
-2. Create feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open Pull Request
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Support
+## Acknowledgments
 
-- **Issues**: [GitHub Issues](https://github.com/itsalfredakku/youtrack-mcp/issues)
-- **Documentation**: [API Documentation](docs/api-references.md)
-- **YouTrack API**: [Official YouTrack REST API Documentation](https://www.jetbrains.com/help/youtrack/devportal/youtrack-rest-api.html)
-
----
-
-**Made with ❤️ for the YouTrack and MCP communities**
+- [YouTrack REST API](https://www.jetbrains.com/help/youtrack/standalone/api-reference.html)
+- [TypeScript](https://www.typescriptlang.org/)
+- [Node.js](https://nodejs.org/)
