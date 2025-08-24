@@ -37,32 +37,45 @@ export class ProjectsAPIClient extends BaseAPIClient {
    */
   async listProjects(fields: string = 'id,name,shortName,description'): Promise<MCPResponse> {
     try {
-      // Use issues endpoint approach for reliable project discovery
-      const params = { 
-        query: 'project: *',
-        fields: `project(${fields})`,
-        '$top': 100
-      };
-      
-      const response = await this.get('/api/issues', params);
-      
-      // Extract unique projects from issues
-      const projectMap = new Map();
-      if (response.data && Array.isArray(response.data)) {
-        response.data.forEach((issue: any) => {
-          if (issue.project) {
-            projectMap.set(issue.project.id, issue.project);
+      // Primary: official projects endpoint (works even when a project has zero issues)
+      const params = {
+        fields,
+        $top: 1000,
+        $skip: 0
+      } as any;
+
+      const projectsResp = await this.get('/api/projects', params);
+      let projects = Array.isArray(projectsResp.data) ? projectsResp.data : [];
+
+      // Fallback: union with issue-derived discovery if projects endpoint is restricted
+      if (!projects.length) {
+        try {
+          const altParams = { 
+            query: 'project: *',
+            fields: `project(${fields})`,
+            $top: 1000
+          };
+          const issuesResp = await this.get('/api/issues', altParams);
+          const projectMap = new Map<string, any>();
+          if (Array.isArray(issuesResp.data)) {
+            for (const issue of issuesResp.data) {
+              if (issue.project) projectMap.set(issue.project.id, issue.project);
+            }
           }
-        });
+          projects = Array.from(projectMap.values());
+        } catch {
+          // ignore fallback failures; we'll proceed with what we have
+        }
       }
-      
-      const projects = Array.from(projectMap.values());
-      return ResponseFormatter.formatSuccess(projects, `Retrieved ${projects.length} accessible projects`);
+
+      return ResponseFormatter.formatSuccess(
+        projects,
+        `Retrieved ${projects.length} accessible projects`,
+      );
     } catch (error) {
       return ResponseFormatter.formatError(
-        error instanceof Error ? error.message : String(error), 
-        'Failed to list projects', 
-        { source: '/api/issues' }
+        `Failed to list projects: ${error instanceof Error ? error.message : String(error)}`,
+        error
       );
     }
   }

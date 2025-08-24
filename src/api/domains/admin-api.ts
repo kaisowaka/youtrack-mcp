@@ -493,7 +493,15 @@ export class AdminAPIClient extends BaseAPIClient {
       };
 
       const response = await this.axios.get(endpoint, { params });
-      const issues = response.data || [];
+      const issues = Array.isArray(response.data) ? response.data : [];
+
+      if (issues.length === 0) {
+        return ResponseFormatter.formatAnalytics(
+          [],
+          { reportType: 'gantt', projectId, totalTasks: 0, completedTasks: 0, note: 'No issues found in this project yet' },
+          'Gantt Chart Data'
+        );
+      }
 
       // Process issues into Gantt chart format
       const ganttData = issues.map((issue: any) => ({
@@ -547,7 +555,15 @@ export class AdminAPIClient extends BaseAPIClient {
       };
 
       const response = await this.axios.get(endpoint, { params });
-      const issues = response.data || [];
+      const issues = Array.isArray(response.data) ? response.data : [];
+
+      if (issues.length === 0) {
+        return ResponseFormatter.formatAnalytics(
+          [],
+          { reportType: 'critical_path', projectId, issueCount: 0, note: 'No open issues to analyze' },
+          'Critical Path Analysis'
+        );
+      }
 
       // Simple critical path based on priority and age
       const criticalPath = issues

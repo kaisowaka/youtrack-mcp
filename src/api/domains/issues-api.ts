@@ -46,12 +46,18 @@ export class IssuesAPIClient extends BaseAPIClient {
   async createIssue(projectId: string, params: IssueCreateParams): Promise<MCPResponse> {
     const endpoint = `/api/issues`;
     
+    // Accept either internal ID (e.g., 0-2) or shortName (e.g., MYDAPI)
+    const isInternalId = /^\d+-\d+$/.test(projectId);
+    const projectRef: any = { $type: 'Project' };
+    if (isInternalId) {
+      projectRef.id = projectId;
+    } else {
+      projectRef.shortName = projectId;
+    }
+
     const issueData = {
       $type: 'Issue',
-      project: { 
-        $type: 'Project',
-        shortName: projectId  // Use shortName instead of id for project reference
-      },
+      project: projectRef,
       summary: params.summary,
       description: params.description || '',
       ...this.buildCustomFields(params)
