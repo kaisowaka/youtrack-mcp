@@ -6,8 +6,8 @@ WORKDIR /app
 
 # Install dependencies (including dev) for building the TypeScript project
 FROM base AS deps
-COPY package.json package-lock.json ./
-RUN npm ci
+COPY package*.json ./
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
 # Build stage compiles the TypeScript sources to JavaScript in dist/
 FROM deps AS build
@@ -21,8 +21,9 @@ FROM node:20-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+COPY package*.json ./
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi \
+  && npm cache clean --force
 
 # Copy compiled application
 COPY --from=build /app/dist ./dist
