@@ -19,7 +19,9 @@ RUN npm run build
 # Production image with only runtime dependencies
 FROM node:20-alpine AS runtime
 WORKDIR /app
-ENV NODE_ENV=production
+ENV NODE_ENV=production \
+    PORT=3001 \
+    MCP_BASE_PATH=/mcp
 
 COPY package*.json ./
 RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi \
@@ -34,5 +36,5 @@ RUN addgroup -g 1001 appgroup \
   && chown -R appuser:appgroup /app
 USER appuser
 
-EXPOSE 3000
-CMD ["node", "dist/index.js"]
+EXPOSE 3001
+CMD ["node", "dist/remote.js"]
