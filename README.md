@@ -98,6 +98,32 @@ npm start
 npm run dev
 ```
 
+### Running as a Remote MCP Server
+
+```bash
+# Start the SSE-based remote server
+npm run start:remote
+
+# Hot-reload while iterating on the remote server
+npm run dev:remote
+```
+
+- Remote SSE endpoint: `http://localhost:3001/mcp/sse`
+- Message POST endpoint: emitted automatically as `http://localhost:3001/mcp/messages?sessionId=...`
+- Health check: `http://localhost:3001/health`
+- Configuration: set `PORT` (default `3001`) and `MCP_BASE_PATH` (default `/mcp`) before starting the process
+
+When deploying behind HTTPS, expose the same endpoints over `https://` so ChatGPT can reach them.
+
+### ChatGPT Custom Connector Setup
+
+1. Deploy the remote server (container, VM, or serverless) with the required environment variables (`YOUTRACK_URL`, `YOUTRACK_TOKEN`, optional `PORT`/`MCP_BASE_PATH`).
+2. Ensure the SSE endpoint `https://<your-domain>/mcp/sse` is reachable from the public internet and that long-lived HTTP connections are allowed by your proxy/load balancer.
+3. In ChatGPT → Settings → Custom connectors, choose **Add MCP server** and supply the SSE URL from step 2. The connector will receive the POST endpoint automatically from the server.
+4. Store any YouTrack credentials as secrets in the connector configuration rather than hard-coding them in code deployments.
+
+After saving the connector you can test connectivity from ChatGPT. Successful initialization will list the YouTrack tools exposed by this server.
+
 ### Interacting with the Server
 
 The YouTrack MCP server exposes tools following the Model Context Protocol. LLM applications can discover and use these tools to interact with YouTrack.
