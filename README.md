@@ -78,40 +78,99 @@ ENABLE_WEBHOOKS=false
 WEBHOOK_PORT=3000
 WEBHOOK_SECRET=
 ```
-| Variable | Req | Description | Default |
+| Variable | Required | Description | Default |
 |----------|-----|-------------|---------|
 | `YOUTRACK_URL` | ✅ | Base URL (no trailing slash) | — |
 | `YOUTRACK_TOKEN` | ✅ | Permanent token (Profile → Tokens) | — |
-| `PROJECT_ID` | ❌ | Default project shortName | — |
-| `LOG_LEVEL` | ❌ | error/warn/info/debug | info |
-| `CACHE_ENABLED` | ❌ | Enable in‑memory cache | true |
-| `CACHE_TTL` | ❌ | Cache TTL ms | 300000 |
-| `ENABLE_WEBHOOKS` | ❌ | Start webhook listener | false |
-| `WEBHOOK_PORT` | ❌ | Webhook port | 3000 |
-| `WEBHOOK_SECRET` | ❌ | HMAC secret | — |
+| `PROJECT_ID` | — | Default project shortName | — |
+| `LOG_LEVEL` | — | error/warn/info/debug | info |
+| `CACHE_ENABLED` | — | Enable in‑memory cache | true |
+| `CACHE_TTL` | — | Cache TTL ms | 300000 |
+| `ENABLE_WEBHOOKS` | — | Start webhook listener | false |
+| `WEBHOOK_PORT` | — | Webhook port | 3000 |
+| `WEBHOOK_SECRET` | — | HMAC secret | — |
 
 ---
 
 ## MCP Client Integration
 Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 ```json
-{ "mcpServers": { "youtrack": { "command": "node", "args": ["/abs/path/youtrack-mcp/dist/index.js"], "env": {"YOUTRACK_URL": "https://your-instance.youtrack.cloud", "YOUTRACK_TOKEN": "token"} } } }
+{ 
+  "mcpServers": { 
+    "youtrack": {
+      "command": "node", 
+      "args": ["/abs/path/youtrack-mcp/dist/index.js"], 
+      "env": {
+        "YOUTRACK_URL": "https://your-instance.youtrack.cloud", 
+        "YOUTRACK_TOKEN": "token",
+        "PROJECT_ID": "PRJ"  // Optional
+      } 
+    } 
+  } 
+}
 ```
 VSCode (`.vscode/settings.json`):
 ```json
-{ "mcp.servers": { "youtrack": { "command": "node", "args": ["./dist/index.js"], "env": {"YOUTRACK_URL": "https://your-instance.youtrack.cloud", "YOUTRACK_TOKEN": "token"} } } }
+{ 
+  "servers": { 
+    "youtrack": { 
+      "command": "node", 
+      "args": ["./dist/index.js"], 
+      "env": {
+        "YOUTRACK_URL": "https://your-instance.youtrack.cloud", 
+        "YOUTRACK_TOKEN": "token",
+      } 
+    } 
+  } 
+}
 ```
 Continue.dev (`continue.json`):
 ```json
-{ "mcp": { "servers": [{ "name": "youtrack", "command": "node", "args": ["/abs/youtrack-mcp/dist/index.js"], "env": {"YOUTRACK_URL": "https://your-instance.youtrack.cloud", "YOUTRACK_TOKEN": "token"} }] } }
+{ 
+  "mcp": { 
+    "servers": [
+      { 
+        "name": "youtrack", 
+        "command": "node", 
+        "args": ["/abs/youtrack-mcp/dist/index.js"], 
+        "env": {
+          "YOUTRACK_URL": "https://your-instance.youtrack.cloud", 
+          "YOUTRACK_TOKEN": "token"
+        } 
+      }
+    ] 
+  } 
+}
 ```
 Cline / Generic:
 ```json
-{ "mcpServers": { "youtrack": { "command": "node", "args": ["/abs/youtrack-mcp/dist/index.js"], "env": {"YOUTRACK_URL": "https://your-instance.youtrack.cloud", "YOUTRACK_TOKEN": "token"} } } }
+{ 
+  "mcpServers": { 
+    "youtrack": { 
+      "command": "node", 
+      "args": ["/abs/youtrack-mcp/dist/index.js"], 
+      "env": {
+        "YOUTRACK_URL": "https://your-instance.youtrack.cloud", 
+        "YOUTRACK_TOKEN": "token"
+      } 
+    } 
+  } 
+}
 ```
 Zed:
 ```json
-{ "context_servers": { "youtrack": { "command": "node", "args": ["/abs/youtrack-mcp/dist/index.js"], "env": {"YOUTRACK_URL": "https://your-instance.youtrack.cloud", "YOUTRACK_TOKEN": "token"} } } }
+{ 
+  "context_servers": { 
+    "youtrack": { 
+      "command": "node", 
+      "args": ["/abs/youtrack-mcp/dist/index.js"], 
+      "env": {
+        "YOUTRACK_URL": "https://your-instance.youtrack.cloud", 
+        "YOUTRACK_TOKEN": "token"
+      } 
+    } 
+  } 
+}
 ```
 Local test:
 ```bash
@@ -120,43 +179,6 @@ YOUTRACK_TOKEN=token \
 node dist/index.js
 ```
 Pitfalls: absolute path, no trailing slash, full token copy, JSON env values are strings.
-
----
-
-## Usage Examples
-Create Issue:
-```json
-{ "tool": "create_issue", "params": { "projectId": "PROJECT-1", "summary": "Set up CI", "description": "Add pipeline", "priority": "Normal" } }
-```
-Search Issues:
-```json
-{ "tool": "search_issues", "params": { "query": "project: PROJECT-1 state: Open", "limit": 20 } }
-```
-Start Work:
-```json
-{ "tool": "start_working_on_issue", "params": { "issueId": "PROJECT-1-42", "comment": "Beginning implementation" } }
-```
-Create Article:
-```json
-{ "tool": "create_article", "params": { "title": "Deployment Checklist", "content": "Steps...", "tags": ["devops"] } }
-```
-Dependency Link:
-```json
-{ "tool": "create_issue_dependency", "params": { "sourceIssueId": "PROJECT-1-10", "targetIssueId": "PROJECT-1-15", "linkType": "depends on" } }
-```
-
----
-
-## Analytics (Gantt & Critical Path)
-Full Gantt:
-```json
-{ "tool": "generate_gantt_chart", "params": { "projectId": "PROJECT-1", "includeCriticalPath": true } }
-```
-Critical Path:
-```json
-{ "tool": "get_critical_path", "params": { "projectId": "PROJECT-1" } }
-```
-Empty project returns `data: []` with descriptive `meta` (no error).
 
 ---
 
@@ -170,10 +192,6 @@ Empty project returns `data: []` with descriptive `meta` (no error).
 | Projects | `list_projects`, `get_project_details` |
 | Analytics | `generate_gantt_chart`, `get_critical_path`, `create_issue_dependency` |
 | Time | `log_work_item`, `get_time_report` |
-Response envelope:
-```json
-{ "success": true, "data": { }, "meta": { }, "error": null }
-```
 
 ---
 
