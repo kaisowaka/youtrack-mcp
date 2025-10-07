@@ -228,7 +228,10 @@ function createToolDefinitions(configLoader: DynamicConfigLoader) {
   // KNOWLEDGE MANAGEMENT TOOLS
   {
     name: 'knowledge_base',
-    description: 'Knowledge base: list, get, create, update, delete, search articles',
+    description: `Knowledge base: list, get, create, update, delete, search articles
+
+⚠️ IMPORTANT: When creating/updating articles, the 'title' field becomes the article heading.
+NEVER include "# Title" in the content field - it will duplicate. Start content with "##" or body text.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -247,7 +250,23 @@ function createToolDefinitions(configLoader: DynamicConfigLoader) {
         },
         content: {
           type: 'string',
-          description: 'Article content in Markdown format (required for create, optional for update). IMPORTANT: Do NOT include the title as a heading (# Title) in the content - it will be added automatically by YouTrack. Start content directly with the body text or secondary headings (##).'
+          description: `Article content in Markdown format (required for create, optional for update).
+
+⚠️ CRITICAL FORMATTING RULE:
+Do NOT include the title as an H1 heading (# Title) in the content - it will be added automatically by YouTrack from the 'title' field.
+
+✅ CORRECT - Start with secondary headings or body text:
+"## Introduction\\n\\nThis is the content...\\n\\n## Features\\n\\n- Feature 1\\n- Feature 2"
+
+❌ WRONG - Starting with H1 heading causes duplication:
+"# My Article Title\\n\\n## Introduction\\n..." (Title appears twice!)
+
+Start your content with:
+• Body text directly, OR
+• Secondary headings (##, ###, etc.), OR
+• Lists, code blocks, or other content
+
+The server will reject content starting with single # to prevent duplication.`
         },
         summary: {
           type: 'string',

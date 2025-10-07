@@ -46,11 +46,21 @@ export class KnowledgeBaseAPIClient extends BaseAPIClient {
       throw new Error('Project is required to create an article. Please specify the project shortName or ID.');
     }
     
+    // Validate content format: prevent title duplication
+    const trimmedContent = params.content.trim();
+    if (trimmedContent.startsWith('#') && !trimmedContent.startsWith('##')) {
+      throw new Error(
+        'Invalid content format: Content should NOT start with "# Heading" (title is added automatically from the title field). ' +
+        'Start your content with "##" (secondary heading) or body text instead. ' +
+        'Example: "## Introduction\\n\\nYour content here..."'
+      );
+    }
+    
     // Build article data without visibility and tags initially
     // Tags require IDs and must be added separately after creation
     const articleData: any = {
       summary: params.title, // YouTrack uses 'summary' for article title
-      content: params.content, // Content should not include title heading (handled by AI assistant)
+      content: params.content,
       description: params.summary || '',
       parentArticle: params.parentArticle ? { id: params.parentArticle } : undefined,
       project: { 
@@ -139,9 +149,21 @@ export class KnowledgeBaseAPIClient extends BaseAPIClient {
   async updateArticle(articleId: string, updates: ArticleUpdateParams): Promise<MCPResponse> {
     const endpoint = `/articles/${articleId}`;
     
+    // Validate content format if content is being updated
+    if (updates.content !== undefined) {
+      const trimmedContent = updates.content.trim();
+      if (trimmedContent.startsWith('#') && !trimmedContent.startsWith('##')) {
+        throw new Error(
+          'Invalid content format: Content should NOT start with "# Heading" (title is added automatically from the title field). ' +
+          'Start your content with "##" (secondary heading) or body text instead. ' +
+          'Example: "## Introduction\\n\\nYour content here..."'
+        );
+      }
+    }
+    
     const updateData: any = {};
     if (updates.title) updateData.summary = updates.title;
-    if (updates.content !== undefined) updateData.content = updates.content; // Content should not include title heading
+    if (updates.content !== undefined) updateData.content = updates.content;
     if (updates.summary !== undefined) updateData.description = updates.summary;
     if (updates.tags) updateData.tags = updates.tags.map(tag => ({ name: tag }));
     
