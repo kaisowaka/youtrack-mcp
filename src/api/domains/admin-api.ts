@@ -47,7 +47,7 @@ export class AdminAPIClient extends BaseAPIClient {
    * Create a new project
    */
   async createProject(params: ProjectCreateParams): Promise<MCPResponse> {
-    const endpoint = '/api/admin/projects';
+    const endpoint = '/admin/projects';
     
     const projectData = {
       name: params.name,
@@ -66,7 +66,7 @@ export class AdminAPIClient extends BaseAPIClient {
    * Get all projects with administrative details
    */
   async getAllProjects(includeArchived: boolean = false): Promise<MCPResponse> {
-    const endpoint = '/api/admin/projects';
+    const endpoint = '/admin/projects';
     const params = {
       fields: 'id,name,shortName,description,archived,leader(login,name),createdBy(login),created,issues,customFields(field(name))',
       archived: includeArchived
@@ -117,7 +117,7 @@ export class AdminAPIClient extends BaseAPIClient {
    * Create new user account
    */
   async createUser(params: UserCreateParams): Promise<MCPResponse> {
-    const endpoint = '/api/admin/users';
+    const endpoint = '/admin/users';
     
     const userData = {
       login: params.login,
@@ -136,7 +136,7 @@ export class AdminAPIClient extends BaseAPIClient {
    * Get all users with administrative details
    */
   async getAllUsers(query?: string, limit: number = 100): Promise<MCPResponse> {
-    const endpoint = '/api/users';
+    const endpoint = '/users';
     const params: any = { $top: limit };
     
     if (query) {
@@ -201,7 +201,7 @@ export class AdminAPIClient extends BaseAPIClient {
    * Create user group
    */
   async createGroup(params: GroupCreateParams): Promise<MCPResponse> {
-    const endpoint = '/api/admin/groups';
+    const endpoint = '/admin/groups';
     
     const groupData = {
       name: params.name,
@@ -218,7 +218,7 @@ export class AdminAPIClient extends BaseAPIClient {
    * Get all user groups
    */
   async getAllGroups(): Promise<MCPResponse> {
-    const endpoint = '/api/admin/groups';
+    const endpoint = '/admin/groups';
     const params = {
       fields: 'id,name,description,autoJoin,userCount,teamForProject(shortName,name)'
     };
@@ -267,7 +267,7 @@ export class AdminAPIClient extends BaseAPIClient {
    * Create custom field
    */
   async createCustomField(params: CustomFieldParams): Promise<MCPResponse> {
-    const endpoint = '/api/admin/customFieldSettings/customFields';
+    const endpoint = '/admin/customFieldSettings/customFields';
     
     const fieldData = {
       name: params.name,
@@ -286,7 +286,7 @@ export class AdminAPIClient extends BaseAPIClient {
    * Get all custom fields
    */
   async getAllCustomFields(): Promise<MCPResponse> {
-    const endpoint = '/api/admin/customFieldSettings/customFields';
+    const endpoint = '/admin/customFieldSettings/customFields';
     const params = {
       fields: 'id,name,fieldType(presentation),isPrivate,canBeEmpty,emptyFieldText,defaultValues'
     };
@@ -321,7 +321,7 @@ export class AdminAPIClient extends BaseAPIClient {
    * Get system settings
    */
   async getSystemSettings(): Promise<MCPResponse> {
-    const endpoint = '/api/admin/globalSettings';
+    const endpoint = '/admin/globalSettings';
     const params = {
       fields: 'id,name,value,description,defaultValue,type'
     };
@@ -352,7 +352,7 @@ export class AdminAPIClient extends BaseAPIClient {
    * Get system health status
    */
   async getSystemHealth(): Promise<MCPResponse> {
-    const endpoint = '/api/admin/health';
+    const endpoint = '/admin/health';
     
     const response = await this.get(endpoint);
     const healthData = response.data || {};
@@ -367,7 +367,7 @@ export class AdminAPIClient extends BaseAPIClient {
    * Get database statistics
    */
   async getDatabaseStats(): Promise<MCPResponse> {
-    const endpoint = '/api/admin/database/stats';
+    const endpoint = '/admin/database/stats';
     
     const response = await this.get(endpoint);
     const stats = response.data || {};
@@ -387,7 +387,7 @@ export class AdminAPIClient extends BaseAPIClient {
    * Trigger system backup
    */
   async triggerBackup(includeAttachments: boolean = true): Promise<MCPResponse> {
-    const endpoint = '/api/admin/backup';
+    const endpoint = '/admin/backup';
     
     const backupData = {
       includeAttachments,
@@ -404,7 +404,7 @@ export class AdminAPIClient extends BaseAPIClient {
    * Get license information
    */
   async getLicenseInfo(): Promise<MCPResponse> {
-    const endpoint = '/api/admin/license';
+    const endpoint = '/admin/license';
     
     const response = await this.get(endpoint);
     const license = response.data || {};
@@ -419,7 +419,7 @@ export class AdminAPIClient extends BaseAPIClient {
    * Get usage statistics
    */
   async getUsageStats(period: 'day' | 'week' | 'month' = 'month'): Promise<MCPResponse> {
-    const endpoint = '/api/admin/telemetry/usage';
+    const endpoint = '/admin/telemetry/usage';
     const params = { period };
 
     const response = await this.get(endpoint, params);
@@ -449,7 +449,7 @@ export class AdminAPIClient extends BaseAPIClient {
     projectId?: string, 
     userId?: string
   ): Promise<MCPResponse> {
-    const endpoint = '/api/reports/timeTracking';
+    const endpoint = '/reports/timeTracking';
     const params: any = { groupBy };
     
     if (startDate) params.startDate = startDate;

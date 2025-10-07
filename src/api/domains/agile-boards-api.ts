@@ -65,7 +65,7 @@ export class AgileAPIClient extends BaseAPIClient {
     includeDetails?: boolean 
   } = {}): Promise<MCPResponse> {
     try {
-      const endpoint = '/api/agiles';
+      const endpoint = '/agiles';
       const queryParams: any = {
         fields: params.includeDetails 
           ? 'id,name,favorite,orphansAtTheTop,hideOrphansSwimlane,projects(id,name,shortName),sprints(id,name,archived,start,finish)'
