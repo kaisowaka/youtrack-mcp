@@ -141,18 +141,13 @@ export class IssuesAPIClient extends BaseAPIClient {
       }
     }
 
-    // Apply basic field updates via PATCH (preferred) / fallback to POST if PATCH fails
+    // Apply basic field updates via POST (YouTrack doesn't support PATCH for issues)
     if (Object.keys(basicFieldPayload).length > 0) {
       try {
-        await this.patch(`/issues/${issueId}`, basicFieldPayload);
-      } catch (patchErr) {
-        logger.warn(`PATCH failed for issue ${issueId}, retrying with POST: ${patchErr}`);
-        try {
-          await this.post(`/issues/${issueId}`, { $type: 'Issue', ...basicFieldPayload });
-        } catch (postErr) {
-          logger.error(`Failed to update basic fields for issue ${issueId}: ${postErr}`);
-          commandErrors.push(`Basic fields: ${(postErr as Error).message}`);
-        }
+        await this.post(`/issues/${issueId}`, { $type: 'Issue', ...basicFieldPayload });
+      } catch (postErr) {
+        logger.error(`Failed to update basic fields for issue ${issueId}: ${postErr}`);
+        commandErrors.push(`Basic fields: ${(postErr as Error).message}`);
       }
     }
 
@@ -442,13 +437,19 @@ export class IssuesAPIClient extends BaseAPIClient {
    */
   async changeIssueState(issueId: string, newState: string, comment?: string, resolution?: string): Promise<MCPResponse> {
     try {
-      // Use commands API to change state
-      let command = `State ${newState}`;
-      if (comment) {
-        command += ` ${comment}`;
-      }
+      // Use commands API to change state - do NOT append comment to command
+      const command = `State ${newState}`;
       
       await this.applyCommand(issueId, command);
+      
+      // Add comment separately if provided
+      if (comment) {
+        try {
+          await this.addComment(issueId, comment);
+        } catch (commentErr) {
+          logger.warn(`State changed but failed to add comment: ${commentErr}`);
+        }
+      }
       
       return ResponseFormatter.formatUpdated(
         { id: issueId }, 
