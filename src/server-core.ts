@@ -243,15 +243,15 @@ function createToolDefinitions(configLoader: DynamicConfigLoader) {
         },
         title: {
           type: 'string',
-          description: 'Article title (required for create, optional for update)'
+          description: 'Article title (required for create, optional for update). This will be the article heading in YouTrack.'
         },
         content: {
           type: 'string',
-          description: 'Article content (required for create, optional for update)'
+          description: 'Article content in Markdown format (required for create, optional for update). IMPORTANT: Do NOT include the title as a heading (# Title) in the content - it will be added automatically by YouTrack. Start content directly with the body text or secondary headings (##).'
         },
         summary: {
           type: 'string',
-          description: 'Article summary (optional)'
+          description: 'Article summary/description (optional) - a brief overview displayed in article lists'
         },
         tags: {
           type: 'array',

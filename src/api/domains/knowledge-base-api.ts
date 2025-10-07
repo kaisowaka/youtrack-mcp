@@ -50,7 +50,7 @@ export class KnowledgeBaseAPIClient extends BaseAPIClient {
     // Tags require IDs and must be added separately after creation
     const articleData: any = {
       summary: params.title, // YouTrack uses 'summary' for article title
-      content: params.content,
+      content: params.content, // Content should not include title heading (handled by AI assistant)
       description: params.summary || '',
       parentArticle: params.parentArticle ? { id: params.parentArticle } : undefined,
       project: { 
@@ -141,7 +141,7 @@ export class KnowledgeBaseAPIClient extends BaseAPIClient {
     
     const updateData: any = {};
     if (updates.title) updateData.summary = updates.title;
-    if (updates.content !== undefined) updateData.content = updates.content;
+    if (updates.content !== undefined) updateData.content = updates.content; // Content should not include title heading
     if (updates.summary !== undefined) updateData.description = updates.summary;
     if (updates.tags) updateData.tags = updates.tags.map(tag => ({ name: tag }));
     
