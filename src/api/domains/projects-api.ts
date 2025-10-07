@@ -37,14 +37,14 @@ export class ProjectsAPIClient extends BaseAPIClient {
    */
   async listProjects(fields: string = 'id,name,shortName,description'): Promise<MCPResponse> {
     try {
-      // Primary: official projects endpoint (works even when a project has zero issues)
+      // Use the correct endpoint from OpenAPI spec
       const params = {
         fields,
         $top: 1000,
         $skip: 0
       } as any;
 
-      const projectsResp = await this.get('/api/projects', params);
+      const projectsResp = await this.get('/admin/projects', params);
       let projects = Array.isArray(projectsResp.data) ? projectsResp.data : [];
 
       // Fallback: union with issue-derived discovery if projects endpoint is restricted
@@ -55,7 +55,7 @@ export class ProjectsAPIClient extends BaseAPIClient {
             fields: `project(${fields})`,
             $top: 1000
           };
-          const issuesResp = await this.get('/api/issues', altParams);
+          const issuesResp = await this.get('/issues', altParams);
           const projectMap = new Map<string, any>();
           if (Array.isArray(issuesResp.data)) {
             for (const issue of issuesResp.data) {

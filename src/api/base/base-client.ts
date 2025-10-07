@@ -38,9 +38,15 @@ export class BaseAPIClient {
   constructor(config: YouTrackConfig) {
     this.config = config;
     
+    // Ensure baseURL ends with /api (YouTrack REST API requirement)
+    let baseURL = config.baseURL;
+    if (!baseURL.endsWith('/api')) {
+      baseURL = baseURL.replace(/\/$/, '') + '/api';
+    }
+    
     // Initialize HTTP client
     this.axios = axios.create({
-      baseURL: config.baseURL,
+      baseURL: baseURL,
       timeout: config.timeout || 30000,
       headers: {
         'Authorization': `Bearer ${config.token}`,

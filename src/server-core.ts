@@ -249,7 +249,7 @@ const toolDefinitions = [
         tags: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Article tags (optional)'
+          description: 'Article tags (optional) - Note: tags will be skipped during creation due to API limitations'
         },
         searchTerm: {
           type: 'string',
@@ -257,7 +257,7 @@ const toolDefinitions = [
         },
         projectId: {
           type: 'string',
-          description: 'Project ID for filtering'
+          description: 'Project ID or shortName (REQUIRED for create action, optional for filtering in list/search)'
         }
       },
       required: ['action']
@@ -850,7 +850,15 @@ export class YouTrackMCPServer {
       case 'get':
         return await client.knowledgeBase.getArticle(articleId, false);
       case 'create':
-        return await client.knowledgeBase.createArticle({ title, content, summary, tags, projectId });
+        // Resolve projectId from args or environment variable
+        const resolvedProjectId = projectId || this.resolveProjectId();
+        return await client.knowledgeBase.createArticle({ 
+          title, 
+          content, 
+          summary, 
+          tags, 
+          project: resolvedProjectId // Map projectId to project parameter
+        });
       case 'update':
         return await client.knowledgeBase.updateArticle(articleId, { title, content, summary, tags });
       case 'delete':
