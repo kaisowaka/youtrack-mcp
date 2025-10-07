@@ -20,12 +20,19 @@ import {
 } from './validation.js';
 import { AuthenticationManager } from './auth/authentication-manager.js';
 import { CoreTools } from './tools/core-tools.js';
+import { DynamicConfigLoader } from './dynamic-config-loader.js';
 
 // Load environment variables
 dotenv.config();
 
-// Tool definitions using our modular architecture
-const toolDefinitions = [
+// Tool definitions generator using dynamic configuration
+function createToolDefinitions(configLoader: DynamicConfigLoader) {
+  const queryExamples = configLoader.getQueryExamples();
+  const typeExample = configLoader.getTypeExample();
+  const stateExample = configLoader.getStateExample();
+  const priorityExample = configLoader.getPriorityExample();
+
+  return [
   // PROJECT MANAGEMENT TOOLS
   {
     name: 'projects',
@@ -86,11 +93,11 @@ const toolDefinitions = [
         },
         state: {
           type: 'string',
-          description: 'New state (for state action)'
+          description: `New state (for state action). Available states: ${stateExample}`
         },
         priority: {
           type: 'string',
-          description: 'Issue priority'
+          description: `Issue priority. Available priorities: ${priorityExample}`
         },
         assignee: {
           type: 'string',
@@ -98,7 +105,7 @@ const toolDefinitions = [
         },
         type: {
           type: 'string',
-          description: 'Issue type (Bug, Feature, Task, etc.)'
+          description: `Issue type. Available types: ${typeExample}`
         },
         comment: {
           type: 'string',
@@ -127,7 +134,7 @@ const toolDefinitions = [
       properties: {
         query: {
           type: 'string',
-          description: 'YouTrack query syntax string. Examples:\n• "state: Open" - All open issues\n• "project: PROJECT-1 assignee: me" - My issues in project\n• "priority: High created: >2025-01-01" - High priority recent issues\n• "#bug -state: Resolved" - Open bugs (full-text search)'
+          description: `YouTrack query syntax string. Examples:\n• ${queryExamples}`
         },
         fields: {
           type: 'string',
@@ -512,8 +519,9 @@ const toolDefinitions = [
       },
       required: ['action']
     }
-  }
-];
+  } // End of subscriptions tool
+  ]; // End of tools array
+} // End of createToolDefinitions function
 
 export class YouTrackMCPServer {
   private server: Server;
@@ -524,6 +532,8 @@ export class YouTrackMCPServer {
   private transport: Transport | null = null;
   private notificationManager: NotificationManager | null = null;
   private notificationsInitialized = false;
+  private configLoader: DynamicConfigLoader | null = null;
+  private toolDefinitions: any[] = [];
 
   constructor() {
     this.config = new ConfigManager();
@@ -544,7 +554,7 @@ export class YouTrackMCPServer {
   logger.info('Initializing YouTrack MCP Server', { 
       url: youtrackUrl, 
       tokenLength: youtrackToken?.length,
-      toolCount: toolDefinitions.length 
+      toolCount: 'dynamic' // Will be set after config loads
     });
     
     // Initialize client factory
@@ -558,6 +568,9 @@ export class YouTrackMCPServer {
     });
 
   logger.info('Client Factory initialized');
+  
+    // Initialize dynamic configuration loader
+    this.configLoader = new DynamicConfigLoader(youtrackUrl, youtrackToken);
 
     this.server = new Server(
       {
@@ -585,10 +598,31 @@ export class YouTrackMCPServer {
     return projectId;
   }
 
+  private async initializeDynamicConfig(): Promise<void> {
+    if (!this.configLoader) {
+      logger.warn('Config loader not initialized, using default tool definitions');
+      this.toolDefinitions = createToolDefinitions(new DynamicConfigLoader('', ''));
+      return;
+    }
+
+    try {
+      await this.configLoader.loadConfiguration();
+      this.toolDefinitions = createToolDefinitions(this.configLoader);
+      logger.info('Dynamic tool definitions created', {
+        toolCount: this.toolDefinitions.length,
+        states: this.configLoader.getConfig().states.length,
+        priorities: this.configLoader.getConfig().priorities.length
+      });
+    } catch (error) {
+      logger.warn('Failed to load dynamic configuration, using defaults', error);
+      this.toolDefinitions = createToolDefinitions(this.configLoader);
+    }
+  }
+
   private setupToolHandlers(): void {
     // Register tool definitions
     this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
-      tools: toolDefinitions,
+      tools: this.toolDefinitions,
     }));
 
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -1038,11 +1072,15 @@ export class YouTrackMCPServer {
 
   async connect(transport: Transport): Promise<void> {
     this.transport = transport;
+    
+    // Initialize dynamic configuration before connecting
+    await this.initializeDynamicConfig();
+    
     await this.server.connect(transport);
     await this.initializeNotifications();
     logger.info('YouTrack MCP Server connected', {
       transport: transport.constructor?.name ?? 'UnknownTransport',
-      toolCount: toolDefinitions.length,
+      toolCount: this.toolDefinitions.length,
     });
   }
 
