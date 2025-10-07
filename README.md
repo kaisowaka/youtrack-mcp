@@ -54,6 +54,7 @@ curl http://localhost:3001/health
 ## Highlights
 | Domain | Capabilities |
 |--------|--------------|
+| **Dynamic Configuration** | 🆕 Auto-loads custom field values (State, Priority, Type) from YOUR YouTrack instance on startup - no more hardcoded examples! |
 | Issues | CRUD, comments, transitions, dependency links, estimation |
 | Agile  | Sprint create/manage, issue assignment, progress metrics |
 | Knowledge Base | Article create/update/search, tagging, linkage |
@@ -62,6 +63,18 @@ curl http://localhost:3001/health
 | Time Tracking | Log work, time summaries, reporting hooks |
 | Performance | TTL caching, structured logging, graceful fallbacks |
 | Reliability | Consistent response envelope & error normalization |
+
+### 🌟 New: Dynamic Configuration
+
+The MCP server now automatically adapts to your YouTrack customization! On startup, it:
+- ✅ Fetches your actual State values (e.g., "In Progress", "Code Review")
+- ✅ Loads your Priority values (e.g., "Critical", "High", "Medium")
+- ✅ Discovers your Issue Types (e.g., "Bug", "Feature", "Epic")
+- ✅ Generates accurate query examples that work with YOUR setup
+
+**No more errors** from AI assistants suggesting `"state: Open"` when your instance uses `"state: In Progress"`!
+
+See [Dynamic Configuration Documentation](docs/DYNAMIC_CONFIGURATION.md) for details.
 
 ---
 
