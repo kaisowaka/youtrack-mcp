@@ -397,28 +397,13 @@ export class IssuesAPIClient extends BaseAPIClient {
    */
   async changeIssueState(issueId: string, newState: string, comment?: string, resolution?: string): Promise<MCPResponse> {
     try {
-      // Use PATCH to update the issue with correct customFields structure
-      const endpoint = `/issues/${issueId}`;
-      
-      const updateData = {
-        customFields: [
-          {
-            $type: 'StateIssueCustomField',
-            name: 'State',
-            value: {
-              $type: 'StateBundleElement',
-              name: newState
-            }
-          }
-        ]
-      };
-      
-      await this.patch(endpoint, updateData);
-      
-      // Add comment if provided
+      // Use commands API to change state
+      let command = `State ${newState}`;
       if (comment) {
-        await this.addComment(issueId, comment);
+        command += ` ${comment}`;
       }
+      
+      await this.applyCommand(issueId, command);
       
       return ResponseFormatter.formatUpdated(
         { id: issueId }, 
@@ -545,14 +530,11 @@ export class IssuesAPIClient extends BaseAPIClient {
    * Apply a command to an issue
    */
   private async applyCommand(issueId: string, command: string): Promise<any> {
-    // Use idReadable format; YouTrack expects just the command in query, issues identified separately
+    // YouTrack commands API expects the query and issues array
     const endpoint = `/commands`;
     const response = await this.post(endpoint, {
       query: command,
-      issues: [
-        { idReadable: issueId },
-        { id: issueId } // include internal id fallback
-      ]
+      issues: [{ idReadable: issueId }]
     });
     return response.data;
   }
