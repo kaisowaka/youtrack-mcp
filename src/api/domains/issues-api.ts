@@ -83,9 +83,21 @@ export class IssuesAPIClient extends BaseAPIClient {
    */
   async getIssue(issueId: string, fields?: string): Promise<MCPResponse> {
     const endpoint = `/issues/${issueId}`;
-    const params = fields ? { fields } : undefined;
     
-    const response = await this.get(endpoint, params);
+    // Default to comprehensive fields if not specified
+    const defaultFields = 'id,idReadable,summary,description,created,updated,resolved,' +
+      'reporter(login,fullName,email),' +
+      'updater(login,fullName),' +
+      'project(id,name,shortName),' +
+      'customFields(id,name,value(id,name,isResolved,minutes,presentation)),' +
+      'tags(id,name),' +
+      'comments(id,text,created,author(login,fullName)),' +
+      'attachments(id,name,size,mimeType)';
+    
+    const response = await this.get(endpoint, {
+      fields: fields || defaultFields
+    });
+    
     return ResponseFormatter.formatSuccess(response.data, `Retrieved issue ${issueId}`);
   }
   
@@ -377,19 +389,52 @@ export class IssuesAPIClient extends BaseAPIClient {
    * Get available workflow states for issue
    */
   async getIssueStates(issueId: string): Promise<MCPResponse> {
-    const endpoint = `/issues/${issueId}/commands`;
-    
-    const response = await this.get(endpoint);
-    const commands = response.data || [];
-    
-    const stateCommands = commands.filter((cmd: any) => 
-      cmd.command && cmd.command.toLowerCase().includes('state')
-    );
-    
-    return ResponseFormatter.formatSuccess({
-      availableStates: stateCommands,
-      totalCommands: commands.length
-    }, `Found ${stateCommands.length} state transition commands`);
+    try {
+      // Get the issue to find its project
+      const issueResponse = await this.get(`/issues/${issueId}`, {
+        fields: 'id,project(shortName),customFields(name,value(name),$type)'
+      });
+      
+      const issue = issueResponse.data;
+      const projectId = issue.project?.shortName;
+      const currentState = issue.customFields?.find((f: any) => f.name === 'State')?.value?.name;
+      
+      if (!projectId) {
+        return ResponseFormatter.formatError('Could not determine project for issue', `Issue ${issueId}`);
+      }
+
+      // Get project-specific State field values
+      const projectResponse = await this.get(`/admin/projects/${projectId}`, {
+        fields: 'customFields(field(name),bundle(values(name,isResolved)))'
+      });
+
+      const customFields = projectResponse.data.customFields || [];
+      const stateField = customFields.find((f: any) => f.field?.name === 'State');
+      
+      if (!stateField || !stateField.bundle || !stateField.bundle.values) {
+        return ResponseFormatter.formatError(`No State field found for project ${projectId}`, `Issue ${issueId}`);
+      }
+
+      const availableStates = stateField.bundle.values.map((v: any) => ({
+        name: v.name,
+        isResolved: v.isResolved || false,
+        isCurrent: v.name === currentState
+      }));
+
+      return ResponseFormatter.formatSuccess({
+        projectId,
+        currentState,
+        availableStates,
+        stateCount: availableStates.length
+      }, `Found ${availableStates.length} available states for project ${projectId}`);
+      
+    } catch (error) {
+      logger.error('Failed to get issue states', error);
+      return ResponseFormatter.formatError(
+        error instanceof Error ? error.message : String(error),
+        `Failed to get states for issue ${issueId}`
+      );
+    }
   }
   
   /**

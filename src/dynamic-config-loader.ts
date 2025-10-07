@@ -181,6 +181,37 @@ export class DynamicConfigLoader {
   }
 
   /**
+   * Fetch project-specific field values (e.g., for State, Priority)
+   * This gets the actual values available in a specific project's workflow
+   */
+  async fetchProjectFieldValues(projectId: string, fieldName: string): Promise<string[]> {
+    try {
+      const response = await this.axios.get(`/admin/projects/${projectId}`, {
+        params: {
+          fields: `customFields(field(name),bundle(values(name,archived)))`
+        }
+      });
+
+      const customFields = response.data.customFields || [];
+      const field = customFields.find((f: any) => f.field?.name === fieldName);
+
+      if (!field || !field.bundle || !field.bundle.values) {
+        logger.warn(`Field ${fieldName} not found in project ${projectId}`);
+        return [];
+      }
+
+      // Filter out archived values and extract names
+      return field.bundle.values
+        .filter((v: any) => !v.archived)
+        .map((v: any) => v.name);
+
+    } catch (error) {
+      logger.warn(`Failed to fetch ${fieldName} values for project ${projectId}`, error);
+      return [];
+    }
+  }
+
+  /**
    * Generate query examples based on loaded configuration
    */
   getQueryExamples(): string {
