@@ -74,7 +74,7 @@ export class WorkItemsAPIClient extends BaseAPIClient {
    */
   async logTimeToIssue(issueId: string, duration: string, description?: string, date?: string, workType?: string): Promise<MCPResponse> {
     try {
-      const endpoint = `/api/issues/${issueId}/timeTracking/workItems`;
+      const endpoint = `/issues/${issueId}/timeTracking/workItems`;
       
       const workData = {
         duration: this.parseDurationToMinutes(duration),
@@ -96,7 +96,7 @@ export class WorkItemsAPIClient extends BaseAPIClient {
    */
   async getTimeEntries(issueId?: string, startDate?: string, endDate?: string, userId?: string): Promise<MCPResponse> {
     try {
-      const endpoint = issueId ? `/api/issues/${issueId}/timeTracking/workItems` : `/api/workItems`;
+      const endpoint = issueId ? `/issues/${issueId}/timeTracking/workItems` : `/workItems`;
       
       const params: any = {
         fields: 'id,duration,date,description,type(id,name),author(id,login,fullName),issue(id,summary)'
@@ -123,7 +123,7 @@ export class WorkItemsAPIClient extends BaseAPIClient {
    */
   async updateTimeEntry(timeEntryId: string, params: WorkItemUpdateParams): Promise<MCPResponse> {
     try {
-      const endpoint = `/api/workItems/${timeEntryId}`;
+      const endpoint = `/workItems/${timeEntryId}`;
       
       const updateData: any = {};
       if (params.duration) updateData.duration = this.parseDurationToMinutes(params.duration);
@@ -144,7 +144,7 @@ export class WorkItemsAPIClient extends BaseAPIClient {
    */
   async deleteTimeEntry(timeEntryId: string): Promise<MCPResponse> {
     try {
-      const endpoint = `/api/workItems/${timeEntryId}`;
+      const endpoint = `/workItems/${timeEntryId}`;
       await this.delete(endpoint);
       return ResponseFormatter.formatDeleted(timeEntryId, 'Time Entry');
       
@@ -158,7 +158,7 @@ export class WorkItemsAPIClient extends BaseAPIClient {
    */
   async getWorkItems(issueId?: string, projectId?: string, userId?: string): Promise<MCPResponse> {
     try {
-  const endpoint = `/api/workItems`;
+  const endpoint = `/workItems`;
       const params: any = {
         fields: 'id,duration,date,description,type(id,name),author(id,login,fullName),issue(id,summary,project(id,name,shortName))'
       };
@@ -184,7 +184,7 @@ export class WorkItemsAPIClient extends BaseAPIClient {
    */
   async createWorkItem(params: WorkItemCreateParams): Promise<MCPResponse> {
     try {
-      const endpoint = `/api/issues/${params.issueId}/timeTracking/workItems`;
+      const endpoint = `/issues/${params.issueId}/timeTracking/workItems`;
       
       const workData = {
         duration: this.parseDurationToMinutes(params.duration),
@@ -206,7 +206,7 @@ export class WorkItemsAPIClient extends BaseAPIClient {
    */
   async updateWorkItem(workItemId: string, params: WorkItemUpdateParams): Promise<MCPResponse> {
     try {
-      const endpoint = `/api/workItems/${workItemId}`;
+      const endpoint = `/workItems/${workItemId}`;
       
       const updateData: any = {};
       if (params.duration) updateData.duration = this.parseDurationToMinutes(params.duration);
@@ -227,7 +227,7 @@ export class WorkItemsAPIClient extends BaseAPIClient {
    */
   async generateTimeReport(projectId?: string, startDate?: string, endDate?: string, userId?: string): Promise<MCPResponse> {
     try {
-      const endpoint = `/api/reports/time`;
+      const endpoint = `/reports/time`;
       
       const params: any = {};
       if (projectId) params.project = projectId;

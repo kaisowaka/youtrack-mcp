@@ -82,7 +82,7 @@ export class IssuesAPIClient extends BaseAPIClient {
    * Get issue by ID with full details
    */
   async getIssue(issueId: string, fields?: string): Promise<MCPResponse> {
-    const endpoint = `/api/issues/${issueId}`;
+    const endpoint = `/issues/${issueId}`;
     const params = fields ? { fields } : undefined;
     
     const response = await this.get(endpoint, params);
@@ -132,11 +132,11 @@ export class IssuesAPIClient extends BaseAPIClient {
     // Apply basic field updates via PATCH (preferred) / fallback to POST if PATCH fails
     if (Object.keys(basicFieldPayload).length > 0) {
       try {
-        await this.patch(`/api/issues/${issueId}`, basicFieldPayload);
+        await this.patch(`/issues/${issueId}`, basicFieldPayload);
       } catch (patchErr) {
         logger.warn(`PATCH failed for issue ${issueId}, retrying with POST: ${patchErr}`);
         try {
-          await this.post(`/api/issues/${issueId}`, { $type: 'Issue', ...basicFieldPayload });
+          await this.post(`/issues/${issueId}`, { $type: 'Issue', ...basicFieldPayload });
         } catch (postErr) {
           logger.error(`Failed to update basic fields for issue ${issueId}: ${postErr}`);
           commandErrors.push(`Basic fields: ${(postErr as Error).message}`);
@@ -147,7 +147,7 @@ export class IssuesAPIClient extends BaseAPIClient {
     // Tags handled via existing buildCustomFields logic (direct POST) if provided separately
     if (updates.tags && updates.tags.length > 0) {
       try {
-        await this.post(`/api/issues/${issueId}`, { tags: updates.tags.map(t => ({ name: t })) });
+        await this.post(`/issues/${issueId}`, { tags: updates.tags.map(t => ({ name: t })) });
       } catch (tagErr) {
         logger.warn(`Failed to update tags for issue ${issueId}: ${tagErr}`);
         commandErrors.push(`Tags: ${(tagErr as Error).message}`);
@@ -157,7 +157,7 @@ export class IssuesAPIClient extends BaseAPIClient {
     // Fetch updated issue for final response
     let updatedIssue: any = null;
     try {
-      const refreshed = await this.get(`/api/issues/${issueId}`, { fields: 'id,idReadable,summary,description,customFields(name,value(name)),project(shortName),tags(name)' });
+      const refreshed = await this.get(`/issues/${issueId}`, { fields: 'id,idReadable,summary,description,customFields(name,value(name)),project(shortName),tags(name)' });
       updatedIssue = refreshed.data;
     } catch (fetchErr) {
       logger.warn(`Could not fetch refreshed issue ${issueId}: ${fetchErr}`);
@@ -173,7 +173,7 @@ export class IssuesAPIClient extends BaseAPIClient {
    * Delete an issue
    */
   async deleteIssue(issueId: string): Promise<MCPResponse> {
-    const endpoint = `/api/issues/${issueId}`;
+    const endpoint = `/issues/${issueId}`;
     
     await this.delete(endpoint);
     return ResponseFormatter.formatDeleted(issueId, 'Issue');
@@ -183,7 +183,7 @@ export class IssuesAPIClient extends BaseAPIClient {
    * Query issues with YouTrack search syntax
    */
   async queryIssues(params: IssueQueryParams): Promise<MCPResponse> {
-    const endpoint = `/api/issues`;
+    const endpoint = `/issues`;
     
     const queryParams = {
       query: params.query,
@@ -205,7 +205,7 @@ export class IssuesAPIClient extends BaseAPIClient {
    * Get issue comments
    */
   async getIssueComments(issueId: string): Promise<MCPResponse> {
-    const endpoint = `/api/issues/${issueId}/comments`;
+    const endpoint = `/issues/${issueId}/comments`;
     
     const response = await this.get(endpoint, { fields: 'id,text,author(login,name),created,updated' });
     const comments = response.data || [];
@@ -219,7 +219,7 @@ export class IssuesAPIClient extends BaseAPIClient {
    * Add comment to issue
    */
   async addComment(issueId: string, text: string): Promise<MCPResponse> {
-    const endpoint = `/api/issues/${issueId}/comments`;
+    const endpoint = `/issues/${issueId}/comments`;
     
     const commentData = { 
       $type: 'IssueComment',
@@ -234,7 +234,7 @@ export class IssuesAPIClient extends BaseAPIClient {
    * Update existing comment
    */
   async updateComment(issueId: string, commentId: string, text: string): Promise<MCPResponse> {
-    const endpoint = `/api/issues/${issueId}/comments/${commentId}`;
+    const endpoint = `/issues/${issueId}/comments/${commentId}`;
     
     const commentData = { 
       $type: 'IssueComment',
@@ -248,7 +248,7 @@ export class IssuesAPIClient extends BaseAPIClient {
    * Delete comment
    */
   async deleteComment(issueId: string, commentId: string): Promise<MCPResponse> {
-    const endpoint = `/api/issues/${issueId}/comments/${commentId}`;
+    const endpoint = `/issues/${issueId}/comments/${commentId}`;
     
     await this.delete(endpoint);
     return ResponseFormatter.formatDeleted(commentId, 'Comment');
@@ -258,7 +258,7 @@ export class IssuesAPIClient extends BaseAPIClient {
    * Get issue links/dependencies
    */
   async getIssueLinks(issueId: string): Promise<MCPResponse> {
-    const endpoint = `/api/issues/${issueId}/links`;
+    const endpoint = `/issues/${issueId}/links`;
     
     const response = await this.get(endpoint, { 
       fields: 'id,direction,linkType(name,directed),issues(id,summary,state(name))' 
@@ -274,7 +274,7 @@ export class IssuesAPIClient extends BaseAPIClient {
    * Create issue dependency/link
    */
   async createIssueLink(sourceIssueId: string, targetIssueId: string, linkType: string = 'Depends'): Promise<MCPResponse> {
-    const endpoint = `/api/issues/${sourceIssueId}/links`;
+    const endpoint = `/issues/${sourceIssueId}/links`;
     
     const linkData = {
       $type: 'IssueLink',
@@ -315,7 +315,7 @@ export class IssuesAPIClient extends BaseAPIClient {
    * Delete issue link
    */
   async deleteIssueLink(issueId: string, linkId: string): Promise<MCPResponse> {
-    const endpoint = `/api/issues/${issueId}/links/${linkId}`;
+    const endpoint = `/issues/${issueId}/links/${linkId}`;
     
     await this.delete(endpoint);
     return ResponseFormatter.formatDeleted(linkId, 'Issue Link');
@@ -325,7 +325,7 @@ export class IssuesAPIClient extends BaseAPIClient {
    * Get issue work items (time tracking)
    */
   async getIssueWorkItems(issueId: string): Promise<MCPResponse> {
-    const endpoint = `/api/issues/${issueId}/workItems`;
+    const endpoint = `/issues/${issueId}/workItems`;
     
     const response = await this.get(endpoint, {
       fields: 'id,duration,description,date,author(login,name),type(name)'
@@ -341,7 +341,7 @@ export class IssuesAPIClient extends BaseAPIClient {
    * Add work item (log time) to issue
    */
   async addWorkItem(issueId: string, duration: string, description?: string, date?: string, workType?: string): Promise<MCPResponse> {
-    const endpoint = `/api/issues/${issueId}/workItems`;
+    const endpoint = `/issues/${issueId}/workItems`;
     
     const workItemData: any = {
       duration: this.parseDuration(duration),
@@ -361,7 +361,7 @@ export class IssuesAPIClient extends BaseAPIClient {
    * Get issue attachments
    */
   async getIssueAttachments(issueId: string): Promise<MCPResponse> {
-    const endpoint = `/api/issues/${issueId}/attachments`;
+    const endpoint = `/issues/${issueId}/attachments`;
     
     const response = await this.get(endpoint, {
       fields: 'id,name,size,created,author(login,name),mimeType'
@@ -377,7 +377,7 @@ export class IssuesAPIClient extends BaseAPIClient {
    * Get available workflow states for issue
    */
   async getIssueStates(issueId: string): Promise<MCPResponse> {
-    const endpoint = `/api/issues/${issueId}/commands`;
+    const endpoint = `/issues/${issueId}/commands`;
     
     const response = await this.get(endpoint);
     const commands = response.data || [];
@@ -398,7 +398,7 @@ export class IssuesAPIClient extends BaseAPIClient {
   async changeIssueState(issueId: string, newState: string, comment?: string, resolution?: string): Promise<MCPResponse> {
     try {
       // Use PATCH to update the issue with correct customFields structure
-      const endpoint = `/api/issues/${issueId}`;
+      const endpoint = `/issues/${issueId}`;
       
       const updateData = {
         customFields: [
@@ -438,7 +438,7 @@ export class IssuesAPIClient extends BaseAPIClient {
    * Get issue history/activities
    */
   async getIssueActivities(issueId: string): Promise<MCPResponse> {
-    const endpoint = `/api/issues/${issueId}/activities`;
+    const endpoint = `/issues/${issueId}/activities`;
     
     const response = await this.get(endpoint, {
       fields: 'id,timestamp,author(login,name),field(name),oldValue,newValue,targetMember'
@@ -546,7 +546,7 @@ export class IssuesAPIClient extends BaseAPIClient {
    */
   private async applyCommand(issueId: string, command: string): Promise<any> {
     // Use idReadable format; YouTrack expects just the command in query, issues identified separately
-    const endpoint = `/api/commands`;
+    const endpoint = `/commands`;
     const response = await this.post(endpoint, {
       query: command,
       issues: [

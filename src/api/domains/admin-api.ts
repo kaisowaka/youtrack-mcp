@@ -85,7 +85,7 @@ export class AdminAPIClient extends BaseAPIClient {
    * Update project settings
    */
   async updateProject(projectId: string, updates: Partial<ProjectCreateParams>): Promise<MCPResponse> {
-    const endpoint = `/api/admin/projects/${projectId}`;
+    const endpoint = `/admin/projects/${projectId}`;
     
     const updateData: any = {};
     if (updates.name) updateData.name = updates.name;
@@ -101,11 +101,11 @@ export class AdminAPIClient extends BaseAPIClient {
    */
   async deleteProject(projectId: string, archive: boolean = true): Promise<MCPResponse> {
     if (archive) {
-      const endpoint = `/api/admin/projects/${projectId}`;
+      const endpoint = `/admin/projects/${projectId}`;
       const response = await this.post(endpoint, { archived: true });
       return ResponseFormatter.formatUpdated(response.data, 'Project', { archived: true }, `Project ${projectId} archived successfully`);
     } else {
-      const endpoint = `/api/admin/projects/${projectId}`;
+      const endpoint = `/admin/projects/${projectId}`;
       await this.delete(endpoint);
       return ResponseFormatter.formatDeleted(projectId, 'Project');
     }
@@ -167,7 +167,7 @@ export class AdminAPIClient extends BaseAPIClient {
    * Update user account
    */
   async updateUser(userId: string, updates: Partial<UserCreateParams>): Promise<MCPResponse> {
-    const endpoint = `/api/admin/users/${userId}`;
+    const endpoint = `/admin/users/${userId}`;
     
     const updateData: any = {};
     if (updates.fullName) updateData.fullName = updates.fullName;
@@ -183,7 +183,7 @@ export class AdminAPIClient extends BaseAPIClient {
    * Ban/unban user
    */
   async banUser(userId: string, banned: boolean = true, reason?: string): Promise<MCPResponse> {
-    const endpoint = `/api/admin/users/${userId}`;
+    const endpoint = `/admin/users/${userId}`;
     
     const updateData = {
       banned,
@@ -235,7 +235,7 @@ export class AdminAPIClient extends BaseAPIClient {
    * Add user to group
    */
   async addUserToGroup(groupId: string, userId: string): Promise<MCPResponse> {
-    const endpoint = `/api/admin/groups/${groupId}/users`;
+    const endpoint = `/admin/groups/${groupId}/users`;
     
     const userData = { id: userId };
     await this.post(endpoint, userData);
@@ -251,7 +251,7 @@ export class AdminAPIClient extends BaseAPIClient {
    * Remove user from group
    */
   async removeUserFromGroup(groupId: string, userId: string): Promise<MCPResponse> {
-    const endpoint = `/api/admin/groups/${groupId}/users/${userId}`;
+    const endpoint = `/admin/groups/${groupId}/users/${userId}`;
     
     await this.delete(endpoint);
     return ResponseFormatter.formatSuccess({
@@ -303,7 +303,7 @@ export class AdminAPIClient extends BaseAPIClient {
    * Update custom field settings
    */
   async updateCustomField(fieldId: string, updates: Partial<CustomFieldParams>): Promise<MCPResponse> {
-    const endpoint = `/api/admin/customFieldSettings/customFields/${fieldId}`;
+    const endpoint = `/admin/customFieldSettings/customFields/${fieldId}`;
     
     const updateData: any = {};
     if (updates.name) updateData.name = updates.name;
@@ -338,7 +338,7 @@ export class AdminAPIClient extends BaseAPIClient {
    * Update system setting
    */
   async updateSystemSetting(settingId: string, value: any): Promise<MCPResponse> {
-    const endpoint = `/api/admin/globalSettings/${settingId}`;
+    const endpoint = `/admin/globalSettings/${settingId}`;
     
     const updateData = { value };
     const response = await this.post(endpoint, updateData);
@@ -475,7 +475,7 @@ export class AdminAPIClient extends BaseAPIClient {
   async generateGanttChart(projectId: string): Promise<MCPResponse> {
     try {
       // First get project shortName
-      const projectEndpoint = `/api/admin/projects/${projectId}`;
+      const projectEndpoint = `/admin/projects/${projectId}`;
       const projectParams = { fields: 'id,shortName,name' };
       const projectResponse = await this.axios.get(projectEndpoint, { params: projectParams });
       
@@ -485,7 +485,7 @@ export class AdminAPIClient extends BaseAPIClient {
       
       const shortName = projectResponse.data.shortName;
       
-      const endpoint = `/api/issues`;
+      const endpoint = `/issues`;
       const params: any = {
         query: `project: ${shortName}`,
         fields: 'id,summary,created,resolved,customFields(name,value)',
@@ -536,7 +536,7 @@ export class AdminAPIClient extends BaseAPIClient {
   async getCriticalPath(projectId: string): Promise<MCPResponse> {
     try {
       // First get project shortName
-      const projectEndpoint = `/api/admin/projects/${projectId}`;
+      const projectEndpoint = `/admin/projects/${projectId}`;
       const projectParams = { fields: 'id,shortName,name' };
       const projectResponse = await this.axios.get(projectEndpoint, { params: projectParams });
       
@@ -547,7 +547,7 @@ export class AdminAPIClient extends BaseAPIClient {
       const shortName = projectResponse.data.shortName;
       
       // Simplified critical path - would need dependency information for full implementation
-      const endpoint = `/api/issues`;
+      const endpoint = `/issues`;
       const params = {
         query: `project: ${shortName} -state: Resolved`,
         fields: 'id,summary,priority,created,customFields(name,value)',
@@ -593,7 +593,7 @@ export class AdminAPIClient extends BaseAPIClient {
   async getResourceAllocation(projectId: string): Promise<MCPResponse> {
     try {
       // First get project shortName
-      const projectEndpoint = `/api/admin/projects/${projectId}`;
+      const projectEndpoint = `/admin/projects/${projectId}`;
       const projectParams = { fields: 'id,shortName,name' };
       const projectResponse = await this.axios.get(projectEndpoint, { params: projectParams });
       
@@ -603,7 +603,7 @@ export class AdminAPIClient extends BaseAPIClient {
       
       const shortName = projectResponse.data.shortName;
       
-      const endpoint = `/api/issues`;
+      const endpoint = `/issues`;
       const params: any = {
         query: `project: ${shortName}`,
         fields: 'id,summary,assignee,customFields(name,value)',
@@ -669,7 +669,7 @@ export class AdminAPIClient extends BaseAPIClient {
 
     for (const issueId of issueIds) {
       try {
-        const endpoint = `/api/issues/${issueId}`;
+        const endpoint = `/issues/${issueId}`;
         await this.axios.post(endpoint, updates);
         results.push({ issueId, status: 'updated' });
       } catch (error: any) {
@@ -692,7 +692,7 @@ export class AdminAPIClient extends BaseAPIClient {
    * Create issue dependency
    */
   async createIssueDependency(sourceIssueId: string, targetIssueId: string): Promise<MCPResponse> {
-    const endpoint = `/api/issues/${sourceIssueId}/links`;
+    const endpoint = `/issues/${sourceIssueId}/links`;
     const linkData = {
       issues: [{ id: targetIssueId }],
       linkType: { name: 'depends' }
