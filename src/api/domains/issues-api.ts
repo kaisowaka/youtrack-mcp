@@ -500,8 +500,8 @@ export class IssuesAPIClient extends BaseAPIClient {
    */
   async changeIssueState(issueId: string, newState: string, comment?: string, resolution?: string): Promise<MCPResponse> {
     try {
-      // Use commands API to change state - do NOT append comment to command
-      const command = `State ${newState}`;
+      // Use commands API to change state with colon syntax
+      const command = `State: ${newState}`;
       
       await this.applyCommand(issueId, command);
       
@@ -605,24 +605,26 @@ export class IssuesAPIClient extends BaseAPIClient {
   private async applyCustomFieldsViaCommands(issueId: string, params: any): Promise<void> {
     const commands: string[] = [];
     
+    // YouTrack command syntax: "FieldName: Value" or "FieldName Value" depending on the field
+    // For enum fields (Type, Priority, State), use colon syntax
     if (params.type) {
-      commands.push(`Type ${params.type}`);
+      commands.push(`Type: ${params.type}`);
     }
     
     if (params.priority) {
-      commands.push(`Priority ${params.priority}`);
+      commands.push(`Priority: ${params.priority}`);
     }
     
     if (params.state) {
-      commands.push(`State ${params.state}`);
+      commands.push(`State: ${params.state}`);
     }
     
     if (params.assignee) {
-      commands.push(`Assignee ${params.assignee}`);
+      commands.push(`Assignee: ${params.assignee}`);
     }
     
     if (params.subsystem) {
-      commands.push(`Subsystem ${params.subsystem}`);
+      commands.push(`Subsystem: ${params.subsystem}`);
     }
     
     // Apply commands one by one
