@@ -5,6 +5,8 @@ import { WorkItemsAPIClient } from './domains/workitems-api.js';
 import { AdminAPIClient } from './domains/admin-api.js';
 import { ProjectsAPIClient } from './domains/projects-api.js';
 import { KnowledgeBaseAPIClient } from './domains/knowledge-base-api.js';
+import { UsersAPIClient } from './domains/users-api.js';
+import { CustomFieldsAPIClient } from './domains/custom-fields-api.js';
 
 export interface IYouTrackClient {
   issues: IssuesAPIClient;
@@ -13,6 +15,8 @@ export interface IYouTrackClient {
   admin: AdminAPIClient;
   projects: ProjectsAPIClient;
   knowledgeBase: KnowledgeBaseAPIClient;
+  users: UsersAPIClient;
+  customFields: CustomFieldsAPIClient;
   
   // Health and diagnostics
   getHealth(): {
@@ -40,6 +44,8 @@ export class YouTrackClient implements IYouTrackClient {
   admin: AdminAPIClient;
   projects: ProjectsAPIClient;
   knowledgeBase: KnowledgeBaseAPIClient;
+  users: UsersAPIClient;
+  customFields: CustomFieldsAPIClient;
 
   constructor(config: YouTrackConfig) {
     this.issues = new IssuesAPIClient(config);
@@ -48,6 +54,8 @@ export class YouTrackClient implements IYouTrackClient {
     this.admin = new AdminAPIClient(config);
     this.projects = new ProjectsAPIClient(config);
     this.knowledgeBase = new KnowledgeBaseAPIClient(config);
+    this.users = new UsersAPIClient(config);
+    this.customFields = new CustomFieldsAPIClient(config);
   }
 
   getHealth(): {

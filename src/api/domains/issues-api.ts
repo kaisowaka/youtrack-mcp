@@ -729,4 +729,129 @@ export class IssuesAPIClient extends BaseAPIClient {
       );
     }
   }
+
+  // ==================== WATCHER OPERATIONS ====================
+
+  /**
+   * Get issue watchers
+   */
+  async getIssueWatchers(issueId: string): Promise<MCPResponse> {
+    try {
+      const endpoint = `/issues/${issueId}/watchers`;
+      const params = {
+        fields: 'hasStar,issueWatchers(user(id,login,fullName,email,avatarUrl))'
+      };
+
+      const response = await this.get(endpoint, params);
+      
+      return ResponseFormatter.formatSuccess(
+        response.data,
+        `Retrieved watchers for issue ${issueId}`
+      );
+    } catch (error: any) {
+      return ResponseFormatter.formatError(
+        `Failed to get watchers: ${error.message}`,
+        { issueId, action: 'get_watchers' }
+      );
+    }
+  }
+
+  /**
+   * Add watcher to issue
+   */
+  async addWatcher(issueId: string, userId: string): Promise<MCPResponse> {
+    try {
+      const endpoint = `/issues/${issueId}/watchers`;
+      const data = {
+        issueWatchers: [
+          {
+            user: { id: userId }
+          }
+        ]
+      };
+
+      const response = await this.post(endpoint, data);
+      
+      return ResponseFormatter.formatSuccess(
+        response.data,
+        `Added user ${userId} as watcher to issue ${issueId}`
+      );
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        return ResponseFormatter.formatError(
+          `Issue ${issueId} or user ${userId} not found.`,
+          { issueId, userId, action: 'add_watcher' }
+        );
+      }
+
+      return ResponseFormatter.formatError(
+        `Failed to add watcher: ${error.message}`,
+        { issueId, userId, action: 'add_watcher' }
+      );
+    }
+  }
+
+  /**
+   * Remove watcher from issue
+   */
+  async removeWatcher(issueId: string, userId: string): Promise<MCPResponse> {
+    try {
+      const endpoint = `/issues/${issueId}/watchers/${userId}`;
+
+      await this.delete(endpoint);
+      
+      return ResponseFormatter.formatSuccess(
+        { issueId, userId },
+        `Removed user ${userId} from watchers of issue ${issueId}`
+      );
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        return ResponseFormatter.formatError(
+          `Issue ${issueId}, user ${userId}, or watcher relationship not found.`,
+          { issueId, userId, action: 'remove_watcher' }
+        );
+      }
+
+      return ResponseFormatter.formatError(
+        `Failed to remove watcher: ${error.message}`,
+        { issueId, userId, action: 'remove_watcher' }
+      );
+    }
+  }
+
+  /**
+   * Toggle star (watch) for current user
+   */
+  async toggleStar(issueId: string): Promise<MCPResponse> {
+    try {
+      // First, get current star status
+      const currentStatus = await this.get(`/issues/${issueId}/watchers`, {
+        fields: 'hasStar'
+      });
+
+      const hasStar = currentStatus.data?.hasStar || false;
+      const endpoint = `/issues/${issueId}/watchers`;
+
+      if (!hasStar) {
+        // Add star
+        await this.post(endpoint, { hasStar: true });
+        return ResponseFormatter.formatSuccess(
+          { issueId, hasStar: true },
+          `Added star to issue ${issueId}`
+        );
+      } else {
+        // Remove star
+        await this.post(endpoint, { hasStar: false });
+        return ResponseFormatter.formatSuccess(
+          { issueId, hasStar: false },
+          `Removed star from issue ${issueId}`
+        );
+      }
+    } catch (error: any) {
+      return ResponseFormatter.formatError(
+        `Failed to toggle star: ${error.message}`,
+        { issueId, action: 'toggle_star' }
+      );
+    }
+  }
 }

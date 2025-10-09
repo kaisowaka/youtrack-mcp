@@ -62,14 +62,14 @@ function createToolDefinitions(configLoader: DynamicConfigLoader) {
   // ISSUE MANAGEMENT TOOLS  
   {
     name: 'issues',
-    description: 'Issue lifecycle: create, update, query/search, change state, comment, start/complete work, link issues',
+    description: 'Issue lifecycle: create, update, query/search, change state, comment, start/complete work, link issues, manage watchers',
     inputSchema: {
       type: 'object',
       properties: {
         action: {
           type: 'string',
-          enum: ['create', 'update', 'get', 'query', 'search', 'state', 'complete', 'start', 'link', 'move'],
-          description: 'Action: create (new issue), update (modify), get (single issue), query (advanced search), search (smart search), state (change state), complete (mark done), start (begin work), link (relate issues), move (move to another project)'
+          enum: ['create', 'update', 'get', 'query', 'search', 'state', 'complete', 'start', 'link', 'move', 'watchers', 'add_watcher', 'remove_watcher', 'toggle_star'],
+          description: 'Action: create (new issue), update (modify), get (single issue), query (advanced search), search (smart search), state (change state), complete (mark done), start (begin work), link (relate issues), move (move to another project), watchers (get watchers), add_watcher (add user as watcher), remove_watcher (remove watcher), toggle_star (star/unstar issue)'
         },
         projectId: {
           type: 'string',
@@ -77,7 +77,11 @@ function createToolDefinitions(configLoader: DynamicConfigLoader) {
         },
         issueId: {
           type: 'string',
-          description: 'Issue ID (required for update, get, state, complete, start, move actions)'
+          description: 'Issue ID (required for update, get, state, complete, start, move, watchers, add_watcher, remove_watcher, toggle_star actions)'
+        },
+        userId: {
+          type: 'string',
+          description: 'User ID (required for add_watcher, remove_watcher actions)'
         },
         targetProjectId: {
           type: 'string',
@@ -500,6 +504,118 @@ The server will reject content starting with single # to prevent duplication.`
     }
   },
 
+  // USERS & GROUPS
+  {
+    name: 'users',
+    description: 'User and group management: list users, search, get user details, list groups, manage team members',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['list', 'search', 'get', 'current', 'saved_queries', 'list_groups', 'get_group', 'group_members', 'project_team', 'add_to_team'],
+          description: 'Action: list (all users), search (find users), get (user details), current (current user), saved_queries (user queries), list_groups (all groups), get_group (group details), group_members (users in group), project_team (project members), add_to_team (add user to project)'
+        },
+        userId: {
+          type: 'string',
+          description: 'User ID (required for get, saved_queries actions)'
+        },
+        groupId: {
+          type: 'string',
+          description: 'Group ID (required for get_group, group_members actions)'
+        },
+        projectId: {
+          type: 'string',
+          description: 'Project ID (required for project_team, add_to_team actions)'
+        },
+        query: {
+          type: 'string',
+          description: 'Search query (for search action)'
+        },
+        fields: {
+          type: 'string',
+          description: 'Comma-separated fields to return'
+        }
+      },
+      required: ['action']
+    }
+  },
+
+  // CUSTOM FIELDS
+  {
+    name: 'custom_fields',
+    description: 'Custom field management: list, create, update, delete fields, manage bundles, project fields',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['list', 'get', 'create', 'update', 'delete', 'types', 'list_bundles', 'get_bundle', 'create_bundle', 'add_bundle_value', 'project_fields', 'add_to_project', 'remove_from_project', 'issue_fields', 'update_issue_field'],
+          description: 'Action: list (all fields), get (field details), create (new field), update (edit field), delete (remove field), types (available types), list_bundles (all bundles), get_bundle (bundle details), create_bundle (new bundle), add_bundle_value (add value to bundle), project_fields (project custom fields), add_to_project (add field to project), remove_from_project (remove field from project), issue_fields (issue custom fields), update_issue_field (update issue field value)'
+        },
+        fieldId: {
+          type: 'string',
+          description: 'Field ID (required for get, update, delete, add_to_project, remove_from_project actions)'
+        },
+        bundleId: {
+          type: 'string',
+          description: 'Bundle ID (required for get_bundle, add_bundle_value actions)'
+        },
+        projectId: {
+          type: 'string',
+          description: 'Project ID (required for project_fields, add_to_project, remove_from_project actions)'
+        },
+        issueId: {
+          type: 'string',
+          description: 'Issue ID (required for issue_fields, update_issue_field actions)'
+        },
+        name: {
+          type: 'string',
+          description: 'Field or bundle name (for create actions)'
+        },
+        fieldType: {
+          type: 'string',
+          description: 'Field type ID (for create action)'
+        },
+        value: {
+          description: 'Field value (for update_issue_field action)'
+        },
+        values: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              description: { type: 'string' }
+            }
+          },
+          description: 'Bundle values (for create_bundle action)'
+        },
+        description: {
+          type: 'string',
+          description: 'Description for bundle value'
+        },
+        isPublic: {
+          type: 'boolean',
+          description: 'Whether field is public (for create action)'
+        },
+        canBeEmpty: {
+          type: 'boolean',
+          description: 'Whether field can be empty in project'
+        },
+        emptyFieldText: {
+          type: 'string',
+          description: 'Text to display when field is empty'
+        },
+        fields: {
+          type: 'string',
+          description: 'Comma-separated fields to return'
+        }
+      },
+      required: ['action']
+    }
+  },
+
   // NOTIFICATION SUBSCRIPTIONS
   {
     name: 'subscriptions',
@@ -682,6 +798,12 @@ export class YouTrackMCPServer {
           case 'time_tracking':
             return await this.handleTimeTracking(client, args);
           
+          case 'users':
+            return await this.handleUsersManage(client, args);
+          
+          case 'custom_fields':
+            return await this.handleCustomFieldsManage(client, args);
+          
           case 'auth':
             return await this.coreTools.handleAuthManage(args);
           
@@ -696,7 +818,7 @@ export class YouTrackMCPServer {
             logger.warn('Unknown tool requested', { 
               tool: name, 
               suggestion: TOOL_NAME_MAPPINGS[name] || 'none',
-              availableTools: ['projects', 'issues', 'query', 'comments', 'agile_boards', 'knowledge_base', 'analytics', 'admin', 'time_tracking', 'auth', 'notifications', 'subscriptions']
+              availableTools: ['projects', 'issues', 'query', 'comments', 'agile_boards', 'knowledge_base', 'analytics', 'admin', 'time_tracking', 'users', 'custom_fields', 'auth', 'notifications', 'subscriptions']
             });
             throw new McpError(
               ErrorCode.MethodNotFound,
@@ -757,7 +879,7 @@ export class YouTrackMCPServer {
   }
 
   private async handleIssuesManage(client: any, args: any) {
-    const { action, projectId, issueId, summary, description, query, state, comment, priority, assignee, type, targetIssueId, targetProjectId, linkType } = args;
+    const { action, projectId, issueId, userId, summary, description, query, state, comment, priority, assignee, type, targetIssueId, targetProjectId, linkType } = args;
     let normalizedLinkType = linkType;
     
     // Validate parameters based on action
@@ -772,7 +894,14 @@ export class YouTrackMCPServer {
         case 'state':
         case 'complete':
         case 'start':
+        case 'watchers':
+        case 'toggle_star':
           ParameterValidator.validateIssueId(issueId, 'issueId');
+          break;
+        case 'add_watcher':
+        case 'remove_watcher':
+          ParameterValidator.validateIssueId(issueId, 'issueId');
+          ParameterValidator.validateRequired(userId, 'userId');
           break;
         case 'move':
           ParameterValidator.validateIssueId(issueId, 'issueId');
@@ -828,6 +957,14 @@ export class YouTrackMCPServer {
         return await client.issues.moveIssueToProject(issueId, targetProjectId, comment);
       case 'link':
         return await client.issues.linkIssues(issueId, targetIssueId, normalizedLinkType);
+      case 'watchers':
+        return await client.issues.getIssueWatchers(issueId);
+      case 'add_watcher':
+        return await client.issues.addWatcher(issueId, userId);
+      case 'remove_watcher':
+        return await client.issues.removeWatcher(issueId, userId);
+      case 'toggle_star':
+        return await client.issues.toggleStar(issueId);
       default:
         throw new Error(`Unknown issues action: ${action}`);
     }
@@ -1076,6 +1213,161 @@ export class YouTrackMCPServer {
         return await client.workItems.generateTimeReport(projectId, startDate, endDate, userId);
       default:
         throw new Error(`Unknown time tracking action: ${action}`);
+    }
+  }
+
+  private async handleUsersManage(client: any, args: any) {
+    const { action, userId, groupId, projectId, query, fields } = args;
+    
+    // Validate parameters based on action
+    try {
+      const needsUserId = ['get', 'saved_queries'];
+      if (needsUserId.includes(action)) {
+        ParameterValidator.validateRequired(userId, 'userId');
+      }
+      
+      const needsGroupId = ['get_group', 'group_members'];
+      if (needsGroupId.includes(action)) {
+        ParameterValidator.validateRequired(groupId, 'groupId');
+      }
+      
+      const needsProjectId = ['project_team', 'add_to_team'];
+      if (needsProjectId.includes(action)) {
+        ParameterValidator.validateProjectId(projectId, 'projectId');
+      }
+      
+      if (action === 'search') {
+        ParameterValidator.validateRequired(query, 'query');
+      }
+      
+      if (action === 'add_to_team') {
+        ParameterValidator.validateRequired(userId, 'userId');
+      }
+    } catch (error) {
+      logger.error('Users parameter validation failed', { 
+        action, 
+        userId, 
+        groupId, 
+        projectId, 
+        error: error instanceof Error ? error.message : error 
+      });
+      if (error instanceof ValidationError) {
+        throw ParameterValidator.toMcpError(error);
+      }
+      throw error;
+    }
+    
+    switch (action) {
+      case 'list':
+        return await client.users.listUsers(query, fields);
+      case 'search':
+        return await client.users.searchUsers(query, fields);
+      case 'get':
+        return await client.users.getUser(userId, fields);
+      case 'current':
+        return await client.users.getCurrentUser(fields);
+      case 'saved_queries':
+        return await client.users.getUserSavedQueries(userId);
+      case 'list_groups':
+        return await client.users.listGroups(fields);
+      case 'get_group':
+        return await client.users.getGroup(groupId, fields);
+      case 'group_members':
+        return await client.users.getGroupMembers(groupId, fields);
+      case 'project_team':
+        return await client.users.getProjectTeam(projectId, fields);
+      case 'add_to_team':
+        return await client.users.addUserToProjectTeam(projectId, userId);
+      default:
+        throw new Error(`Unknown users action: ${action}`);
+    }
+  }
+
+  private async handleCustomFieldsManage(client: any, args: any) {
+    const { action, fieldId, bundleId, projectId, issueId, name, fieldType, value, values, description, isPublic, canBeEmpty, emptyFieldText, fields } = args;
+    
+    // Validate parameters based on action
+    try {
+      const needsFieldId = ['get', 'update', 'delete', 'add_to_project', 'remove_from_project', 'update_issue_field'];
+      if (needsFieldId.includes(action)) {
+        ParameterValidator.validateRequired(fieldId, 'fieldId');
+      }
+      
+      const needsBundleId = ['get_bundle', 'add_bundle_value'];
+      if (needsBundleId.includes(action)) {
+        ParameterValidator.validateRequired(bundleId, 'bundleId');
+      }
+      
+      const needsProjectId = ['project_fields', 'add_to_project', 'remove_from_project'];
+      if (needsProjectId.includes(action)) {
+        ParameterValidator.validateProjectId(projectId, 'projectId');
+      }
+      
+      const needsIssueId = ['issue_fields', 'update_issue_field'];
+      if (needsIssueId.includes(action)) {
+        ParameterValidator.validateIssueId(issueId, 'issueId');
+      }
+      
+      if (action === 'create') {
+        ParameterValidator.validateRequired(name, 'name');
+        ParameterValidator.validateRequired(fieldType, 'fieldType');
+      }
+      
+      if (['create_bundle', 'add_bundle_value'].includes(action)) {
+        ParameterValidator.validateRequired(name, 'name');
+      }
+      
+      if (action === 'update_issue_field') {
+        ParameterValidator.validateRequired(value, 'value');
+      }
+    } catch (error) {
+      logger.error('Custom fields parameter validation failed', { 
+        action, 
+        fieldId, 
+        bundleId, 
+        projectId, 
+        issueId, 
+        error: error instanceof Error ? error.message : error 
+      });
+      if (error instanceof ValidationError) {
+        throw ParameterValidator.toMcpError(error);
+      }
+      throw error;
+    }
+    
+    switch (action) {
+      case 'list':
+        return await client.customFields.listCustomFields(fields);
+      case 'get':
+        return await client.customFields.getCustomField(fieldId, fields);
+      case 'create':
+        return await client.customFields.createCustomField({ name, fieldType, isPublic });
+      case 'update':
+        return await client.customFields.updateCustomField(fieldId, { name, isPublic });
+      case 'delete':
+        return await client.customFields.deleteCustomField(fieldId);
+      case 'types':
+        return await client.customFields.listFieldTypes(fields);
+      case 'list_bundles':
+        return await client.customFields.listEnumBundles(fields);
+      case 'get_bundle':
+        return await client.customFields.getEnumBundle(bundleId, fields);
+      case 'create_bundle':
+        return await client.customFields.createEnumBundle({ name, values });
+      case 'add_bundle_value':
+        return await client.customFields.addEnumBundleValue(bundleId, name, description);
+      case 'project_fields':
+        return await client.customFields.getProjectCustomFields(projectId, fields);
+      case 'add_to_project':
+        return await client.customFields.addCustomFieldToProject(projectId, fieldId, { canBeEmpty, emptyFieldText });
+      case 'remove_from_project':
+        return await client.customFields.removeCustomFieldFromProject(projectId, fieldId);
+      case 'issue_fields':
+        return await client.customFields.getIssueCustomFields(issueId, fields);
+      case 'update_issue_field':
+        return await client.customFields.updateIssueCustomFieldValue(issueId, fieldId, value);
+      default:
+        throw new Error(`Unknown custom fields action: ${action}`);
     }
   }
 
