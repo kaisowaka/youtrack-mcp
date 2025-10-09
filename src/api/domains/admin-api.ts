@@ -786,11 +786,105 @@ export class AdminAPIClient extends BaseAPIClient {
     return criticalPath;
   }
 
+  /**
+   * Fetch work items (time tracking) for issues
+   */
+  private async fetchIssueWorkItems(issueIds: string[]): Promise<Map<string, any>> {
+    const workItemsMap = new Map<string, any>();
+    
+    // Fetch work items for issues in batches
+    const batchSize = 10;
+    for (let i = 0; i < issueIds.length; i += batchSize) {
+      const batch = issueIds.slice(i, i + batchSize);
+      const promises = batch.map(async (issueId) => {
+        try {
+          const endpoint = `/issues/${issueId}/timeTracking/workItems`;
+          const params = { 
+            fields: 'id,date,duration,description,type(name),author(login,fullName)'
+          };
+          const response = await this.axios.get(endpoint, { params });
+          
+          if (response.data && Array.isArray(response.data)) {
+            const workItems = response.data;
+            
+            if (workItems.length > 0) {
+              // Calculate aggregated time tracking data
+              const totalMinutes = workItems.reduce((sum: number, item: any) => 
+                sum + (item.duration?.minutes || 0), 0
+              );
+              
+              const dates = workItems
+                .map((item: any) => item.date)
+                .filter((date: number) => date != null)
+                .sort((a: number, b: number) => a - b);
+              
+              workItemsMap.set(issueId, {
+                workItems,
+                totalMinutes,
+                totalHours: Math.round((totalMinutes / 60) * 10) / 10,
+                actualStart: dates.length > 0 ? dates[0] : null,
+                actualEnd: dates.length > 0 ? dates[dates.length - 1] : null,
+                workItemCount: workItems.length
+              });
+            }
+          }
+        } catch (error) {
+          // If we can't fetch work items for an issue, skip it
+        }
+      });
+      
+      await Promise.all(promises);
+    }
+    
+    return workItemsMap;
+  }
+
+  /**
+   * Fetch time estimates for issues
+   */
+  private async fetchIssueEstimates(issueIds: string[]): Promise<Map<string, number>> {
+    const estimatesMap = new Map<string, number>();
+    
+    // Fetch estimates in batches
+    const batchSize = 20;
+    for (let i = 0; i < issueIds.length; i += batchSize) {
+      const batch = issueIds.slice(i, i + batchSize);
+      const promises = batch.map(async (issueId) => {
+        try {
+          const endpoint = `/issues/${issueId}`;
+          const params = { 
+            fields: 'id,customFields(name,value(minutes))'
+          };
+          const response = await this.axios.get(endpoint, { params });
+          
+          if (response.data?.customFields) {
+            // Look for "Estimation" or "Time Estimate" field
+            const estimateField = response.data.customFields.find((cf: any) => {
+              const name = cf.name?.toLowerCase() || '';
+              return name.includes('estimat') || name.includes('time');
+            });
+            
+            if (estimateField?.value?.minutes) {
+              estimatesMap.set(issueId, estimateField.value.minutes);
+            }
+          }
+        } catch (error) {
+          // If we can't fetch estimate for an issue, skip it
+        }
+      });
+      
+      await Promise.all(promises);
+    }
+    
+    return estimatesMap;
+  }
+
   async generateGanttChart(
     projectId: string, 
     includeDependencies: boolean = false,
     includeSprints: boolean = false,
-    sprintId?: string
+    sprintId?: string,
+    includeWorkItems: boolean = false
   ): Promise<MCPResponse> {
     try {
       // First get project shortName
@@ -864,6 +958,18 @@ export class AdminAPIClient extends BaseAPIClient {
         
         // Generate milestones from sprints
         sprintMilestones = this.generateSprintMilestones(projectSprints);
+      }
+
+      // Fetch work items and estimates if requested
+      let workItemsMap = new Map<string, any>();
+      let estimatesMap = new Map<string, number>();
+      
+      if (includeWorkItems) {
+        const issueIds = issues.map((issue: any) => issue.id);
+        [workItemsMap, estimatesMap] = await Promise.all([
+          this.fetchIssueWorkItems(issueIds),
+          this.fetchIssueEstimates(issueIds)
+        ]);
       }
 
       // Process issues into Gantt chart format with custom date field support
@@ -957,6 +1063,47 @@ export class AdminAPIClient extends BaseAPIClient {
           }
         }
         
+        // Add work items and time tracking information if available
+        if (includeWorkItems && workItemsMap.has(issue.id)) {
+          const workItemsData = workItemsMap.get(issue.id);
+          const estimatedMinutes = estimatesMap.get(issue.id) || 0;
+          
+          // Add time tracking fields
+          task.estimated_hours = estimatedMinutes > 0 ? Math.round((estimatedMinutes / 60) * 10) / 10 : undefined;
+          task.actual_hours = workItemsData.totalHours;
+          task.work_item_count = workItemsData.workItemCount;
+          
+          // Add actual timeline from work items
+          if (workItemsData.actualStart) {
+            task.actual_start = new Date(workItemsData.actualStart).toISOString();
+          }
+          if (workItemsData.actualEnd) {
+            task.actual_end = new Date(workItemsData.actualEnd).toISOString();
+          }
+          
+          // Calculate progress percentage (capped at 100%)
+          if (estimatedMinutes > 0) {
+            task.progress = Math.min(100, Math.round((workItemsData.totalMinutes / estimatedMinutes) * 100));
+          } else if (workItemsData.totalMinutes > 0) {
+            // Has work items but no estimate - show time spent but progress unknown
+            task.progress = undefined;
+          }
+          
+          // Calculate time variance (actual - estimated)
+          if (estimatedMinutes > 0) {
+            const estimatedHours = Math.round((estimatedMinutes / 60) * 10) / 10;
+            task.time_variance = Math.round((workItemsData.totalHours - estimatedHours) * 10) / 10;
+            task.time_variance_percentage = Math.round(((workItemsData.totalHours - estimatedHours) / estimatedHours) * 100);
+          }
+          
+          // Calculate schedule variance if we have actual dates
+          if (workItemsData.actualStart && workItemsData.actualEnd) {
+            const plannedDuration = new Date(endDate).getTime() - new Date(startDate).getTime();
+            const actualDuration = new Date(workItemsData.actualEnd).getTime() - new Date(workItemsData.actualStart).getTime();
+            task.schedule_variance_days = Math.round((actualDuration - plannedDuration) / (1000 * 60 * 60 * 24) * 10) / 10;
+          }
+        }
+        
         return task;
       });
 
@@ -1005,6 +1152,49 @@ export class AdminAPIClient extends BaseAPIClient {
               finish: currentSprint.finish
             };
           }
+        }
+      }
+      
+      if (includeWorkItems) {
+        metadata.workItemsIncluded = true;
+        
+        // Calculate time tracking statistics
+        const tasksWithWorkItems = ganttData.filter((task: any) => task.work_item_count && task.work_item_count > 0);
+        const tasksWithEstimates = ganttData.filter((task: any) => task.estimated_hours !== undefined);
+        
+        metadata.tasksWithWorkItems = tasksWithWorkItems.length;
+        metadata.tasksWithEstimates = tasksWithEstimates.length;
+        
+        // Calculate totals
+        const totalActualHours = tasksWithWorkItems.reduce((sum, task) => sum + (task.actual_hours || 0), 0);
+        const totalEstimatedHours = tasksWithEstimates.reduce((sum, task) => sum + (task.estimated_hours || 0), 0);
+        
+        metadata.totalActualHours = Math.round(totalActualHours * 10) / 10;
+        metadata.totalEstimatedHours = Math.round(totalEstimatedHours * 10) / 10;
+        
+        if (totalEstimatedHours > 0) {
+          metadata.totalTimeVariance = Math.round((totalActualHours - totalEstimatedHours) * 10) / 10;
+          metadata.totalTimeVariancePercentage = Math.round(((totalActualHours - totalEstimatedHours) / totalEstimatedHours) * 100);
+          metadata.overallProgress = Math.min(100, Math.round((totalActualHours / totalEstimatedHours) * 100));
+        }
+        
+        // Calculate averages for tasks with both estimates and actuals
+        const tasksWithBoth = ganttData.filter((task: any) => 
+          task.estimated_hours !== undefined && task.actual_hours !== undefined
+        );
+        
+        if (tasksWithBoth.length > 0) {
+          const avgProgress = tasksWithBoth
+            .filter((task: any) => task.progress !== undefined)
+            .reduce((sum, task) => sum + task.progress, 0) / tasksWithBoth.filter((task: any) => task.progress !== undefined).length;
+          
+          metadata.averageProgress = Math.round(avgProgress);
+          metadata.tasksOnTrack = tasksWithBoth.filter((task: any) => 
+            task.time_variance !== undefined && task.time_variance <= 0
+          ).length;
+          metadata.tasksOverBudget = tasksWithBoth.filter((task: any) => 
+            task.time_variance !== undefined && task.time_variance > 0
+          ).length;
         }
       }
 

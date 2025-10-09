@@ -943,7 +943,8 @@ export class YouTrackMCPServer {
       milestoneId, 
       includeDependencies,
       includeSprints,
-      sprintId
+      sprintId,
+      includeWorkItems
     } = args;
     
     // Validate project ID for project-specific reports
@@ -984,7 +985,8 @@ export class YouTrackMCPServer {
           projectId || this.resolveProjectId(), 
           includeDependencies || false,
           includeSprints || false,
-          sprintId
+          sprintId,
+          includeWorkItems || false
         );
       case 'critical_path':
         return await client.admin.getCriticalPath(projectId || this.resolveProjectId());
