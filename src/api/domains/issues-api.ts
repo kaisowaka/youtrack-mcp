@@ -155,12 +155,12 @@ export class IssuesAPIClient extends BaseAPIClient {
     if (updates.description) basicFieldPayload.description = sanitizeDescription(updates.description);
 
     const commandParts: string[] = [];
-    // Only push commands for fields provided
-    if (updates.state) commandParts.push(`State ${updates.state}`);
-    if (updates.priority) commandParts.push(`Priority ${updates.priority}`);
-    if (updates.type) commandParts.push(`Type ${updates.type}`);
-    if (updates.assignee) commandParts.push(`Assignee ${updates.assignee}`);
-    if (updates.subsystem) commandParts.push(`Subsystem ${updates.subsystem}`);
+    // Only push commands for fields provided (with colon syntax for enum fields)
+    if (updates.state) commandParts.push(`State: ${updates.state}`);
+    if (updates.priority) commandParts.push(`Priority: ${updates.priority}`);
+    if (updates.type) commandParts.push(`Type: ${updates.type}`);
+    if (updates.assignee) commandParts.push(`Assignee: ${updates.assignee}`);
+    if (updates.subsystem) commandParts.push(`Subsystem: ${updates.subsystem}`);
     // Estimation is special – YouTrack uses command "Estimation 2h" etc.
     if (typeof updates.estimation === 'number') {
       // Convert minutes to YouTrack time syntax (e.g., 90 -> 1h 30m)
