@@ -583,6 +583,117 @@ export class AdminAPIClient extends BaseAPIClient {
   }
 
   /**
+   * Fetch sprint data for a project's agile boards
+   */
+  private async fetchProjectSprints(projectId: string): Promise<any[]> {
+    try {
+      // First, get all agile boards for this project
+      const boardsEndpoint = '/agiles';
+      const boardsParams = { 
+        fields: 'id,name,projects(id,shortName),sprints(id,name,start,finish,archived,goal)'
+      };
+      const boardsResponse = await this.axios.get(boardsEndpoint, { params: boardsParams });
+      const allBoards = Array.isArray(boardsResponse.data) ? boardsResponse.data : [];
+      
+      // Filter boards that include this project
+      const projectBoards = allBoards.filter((board: any) => 
+        board.projects?.some((p: any) => p.id === projectId || p.shortName === projectId)
+      );
+      
+      // Collect all sprints from these boards
+      const allSprints: any[] = [];
+      for (const board of projectBoards) {
+        if (board.sprints && Array.isArray(board.sprints)) {
+          for (const sprint of board.sprints) {
+            allSprints.push({
+              id: sprint.id,
+              name: sprint.name,
+              start: sprint.start,
+              finish: sprint.finish,
+              archived: sprint.archived || false,
+              goal: sprint.goal,
+              boardId: board.id,
+              boardName: board.name
+            });
+          }
+        }
+      }
+      
+      return allSprints;
+    } catch (error) {
+      // If we can't fetch sprints, return empty array
+      return [];
+    }
+  }
+
+  /**
+   * Fetch sprint membership for issues
+   */
+  private async fetchIssueSprintMembership(issueIds: string[]): Promise<Map<string, any[]>> {
+    const sprintMap = new Map<string, any[]>();
+    
+    // Fetch sprints for issues in batches
+    const batchSize = 10;
+    for (let i = 0; i < issueIds.length; i += batchSize) {
+      const batch = issueIds.slice(i, i + batchSize);
+      const promises = batch.map(async (issueId) => {
+        try {
+          // Get issue with sprint information
+          const endpoint = `/issues/${issueId}`;
+          const params = { 
+            fields: 'id,sprints(id,name,start,finish,archived)'
+          };
+          const response = await this.axios.get(endpoint, { params });
+          
+          if (response.data?.sprints && Array.isArray(response.data.sprints)) {
+            sprintMap.set(issueId, response.data.sprints);
+          }
+        } catch (error) {
+          // If we can't fetch sprint info for an issue, skip it
+        }
+      });
+      
+      await Promise.all(promises);
+    }
+    
+    return sprintMap;
+  }
+
+  /**
+   * Generate sprint milestones for Gantt visualization
+   */
+  private generateSprintMilestones(sprints: any[]): any[] {
+    const milestones: any[] = [];
+    
+    // Filter out archived sprints and sort by start date
+    const activeSprints = sprints
+      .filter(s => !s.archived && s.start && s.finish)
+      .sort((a, b) => a.start - b.start);
+    
+    for (const sprint of activeSprints) {
+      // Add sprint start milestone
+      milestones.push({
+        date: sprint.start,
+        name: `${sprint.name} - Start`,
+        type: 'sprint-start',
+        sprintId: sprint.id,
+        sprintName: sprint.name
+      });
+      
+      // Add sprint end milestone
+      milestones.push({
+        date: sprint.finish,
+        name: `${sprint.name} - End`,
+        type: 'sprint-end',
+        sprintId: sprint.id,
+        sprintName: sprint.name
+      });
+    }
+    
+    return milestones;
+  }
+
+  /**
    * Calculate critical path using simplified algorithm
    */
   private calculateCriticalPath(tasks: any[], dependencies: Map<string, any[]>): Set<string> {
@@ -675,7 +786,12 @@ export class AdminAPIClient extends BaseAPIClient {
     return criticalPath;
   }
 
-  async generateGanttChart(projectId: string, includeDependencies: boolean = false): Promise<MCPResponse> {
+  async generateGanttChart(
+    projectId: string, 
+    includeDependencies: boolean = false,
+    includeSprints: boolean = false,
+    sprintId?: string
+  ): Promise<MCPResponse> {
     try {
       // First get project shortName
       const projectEndpoint = `/admin/projects/${projectId}`;
@@ -691,9 +807,15 @@ export class AdminAPIClient extends BaseAPIClient {
       // Detect custom date fields
       const dateFields = await this.detectCustomDateFields(projectId);
       
+      // Build query based on sprint filter
+      let query = `project: ${shortName}`;
+      if (sprintId) {
+        query += ` Sprint: ${sprintId}`;
+      }
+      
       const endpoint = `/issues`;
       const params: any = {
-        query: `project: ${shortName}`,
+        query,
         fields: 'id,summary,created,resolved,customFields(name,value)',
         $top: 1000
       };
@@ -709,9 +831,11 @@ export class AdminAPIClient extends BaseAPIClient {
             projectId, 
             totalTasks: 0, 
             completedTasks: 0, 
-            note: 'No issues found in this project yet',
+            note: sprintId ? `No issues found in sprint ${sprintId}` : 'No issues found in this project yet',
             customDateFields: dateFields,
-            includeDependencies
+            includeDependencies,
+            includeSprints,
+            sprintFilter: sprintId
           },
           'Gantt Chart Data'
         );
@@ -724,6 +848,22 @@ export class AdminAPIClient extends BaseAPIClient {
       if (includeDependencies) {
         const issueIds = issues.map((issue: any) => issue.id);
         dependencyMap = await this.fetchIssueDependencies(issueIds);
+      }
+
+      // Fetch sprint data if requested
+      let projectSprints: any[] = [];
+      let sprintMembershipMap = new Map<string, any[]>();
+      let sprintMilestones: any[] = [];
+      
+      if (includeSprints) {
+        const issueIds = issues.map((issue: any) => issue.id);
+        [projectSprints, sprintMembershipMap] = await Promise.all([
+          this.fetchProjectSprints(projectId),
+          this.fetchIssueSprintMembership(issueIds)
+        ]);
+        
+        // Generate milestones from sprints
+        sprintMilestones = this.generateSprintMilestones(projectSprints);
       }
 
       // Process issues into Gantt chart format with custom date field support
@@ -788,6 +928,35 @@ export class AdminAPIClient extends BaseAPIClient {
           task.dependencies = dependencyMap.get(issue.id);
         }
         
+        // Add sprint information if available
+        if (includeSprints && sprintMembershipMap.has(issue.id)) {
+          const issueSprints = sprintMembershipMap.get(issue.id) || [];
+          if (issueSprints.length > 0) {
+            // Include basic sprint info with the task
+            task.sprints = issueSprints.map((s: any) => ({
+              id: s.id,
+              name: s.name,
+              start: s.start,
+              finish: s.finish,
+              archived: s.archived
+            }));
+            
+            // Mark current sprint
+            const currentSprint = issueSprints.find((s: any) => {
+              if (!s.start || !s.finish) return false;
+              const now = Date.now();
+              return s.start <= now && now <= s.finish && !s.archived;
+            });
+            
+            if (currentSprint) {
+              task.currentSprint = {
+                id: currentSprint.id,
+                name: currentSprint.name
+              };
+            }
+          }
+        }
+        
         return task;
       });
 
@@ -818,9 +987,49 @@ export class AdminAPIClient extends BaseAPIClient {
         metadata.totalDependencies = Array.from(dependencyMap.values()).reduce((sum, deps) => sum + deps.length, 0);
         metadata.criticalPathTasks = criticalPath.size;
       }
+      
+      if (includeSprints) {
+        metadata.sprintsIncluded = true;
+        metadata.totalSprints = projectSprints.length;
+        metadata.activeSprints = projectSprints.filter(s => !s.archived).length;
+        metadata.tasksWithSprints = ganttData.filter((task: any) => task.sprints && task.sprints.length > 0).length;
+        
+        // Add current sprint info if filtering by sprint
+        if (sprintId) {
+          const currentSprint = projectSprints.find(s => s.id === sprintId);
+          if (currentSprint) {
+            metadata.currentSprint = {
+              id: currentSprint.id,
+              name: currentSprint.name,
+              start: currentSprint.start,
+              finish: currentSprint.finish
+            };
+          }
+        }
+      }
+
+      // Build response data
+      const responseData: any = {
+        tasks: ganttData
+      };
+      
+      // Add sprint information if included
+      if (includeSprints) {
+        responseData.sprints = projectSprints.map(s => ({
+          id: s.id,
+          name: s.name,
+          start: s.start,
+          finish: s.finish,
+          archived: s.archived,
+          goal: s.goal,
+          boardName: s.boardName
+        }));
+        
+        responseData.milestones = sprintMilestones;
+      }
 
       return ResponseFormatter.formatAnalytics(
-        ganttData,
+        responseData,
         metadata,
         'Gantt Chart Data'
       );
