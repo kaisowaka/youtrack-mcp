@@ -472,6 +472,62 @@ export class AdminAPIClient extends BaseAPIClient {
   /**
    * Generate Gantt chart data
    */
+  /**
+   * Detect custom date fields in a project (e.g., "Start Date", "Due Date")
+   */
+  private async detectCustomDateFields(projectId: string): Promise<{ startDateField?: string; dueDateField?: string }> {
+    try {
+      const endpoint = `/admin/projects/${projectId}/customFields`;
+      const params = { fields: 'field(name,fieldType($type,id))' };
+      const response = await this.axios.get(endpoint, { params });
+      
+      const customFields = Array.isArray(response.data) ? response.data : [];
+      const result: { startDateField?: string; dueDateField?: string } = {};
+      
+      // Look for date-type fields with semantic names
+      for (const cf of customFields) {
+        const fieldName = cf.field?.name?.toLowerCase();
+        const fieldType = cf.field?.fieldType?.$type;
+        
+        // Only consider date-type fields
+        if (fieldType === 'DateIssueCustomField') {
+          if (fieldName && (fieldName.includes('start') || fieldName.includes('begin'))) {
+            result.startDateField = cf.field.name;
+          }
+          if (fieldName && (fieldName.includes('due') || fieldName.includes('end') || fieldName.includes('deadline'))) {
+            result.dueDateField = cf.field.name;
+          }
+        }
+      }
+      
+      return result;
+    } catch (error) {
+      // If we can't detect custom fields, just return empty object
+      return {};
+    }
+  }
+
+  /**
+   * Extract date value from custom field
+   */
+  private extractCustomDateValue(issue: any, fieldName: string): string | null {
+    if (!issue.customFields || !Array.isArray(issue.customFields)) {
+      return null;
+    }
+    
+    const field = issue.customFields.find((cf: any) => cf.name === fieldName);
+    if (!field || !field.value) {
+      return null;
+    }
+    
+    // Date fields return timestamp in milliseconds
+    if (typeof field.value === 'number') {
+      return new Date(field.value).toISOString();
+    }
+    
+    return null;
+  }
+
   async generateGanttChart(projectId: string): Promise<MCPResponse> {
     try {
       // First get project shortName
@@ -484,6 +540,9 @@ export class AdminAPIClient extends BaseAPIClient {
       }
       
       const shortName = projectResponse.data.shortName;
+      
+      // Detect custom date fields
+      const dateFields = await this.detectCustomDateFields(projectId);
       
       const endpoint = `/issues`;
       const params: any = {
@@ -498,22 +557,74 @@ export class AdminAPIClient extends BaseAPIClient {
       if (issues.length === 0) {
         return ResponseFormatter.formatAnalytics(
           [],
-          { reportType: 'gantt', projectId, totalTasks: 0, completedTasks: 0, note: 'No issues found in this project yet' },
+          { 
+            reportType: 'gantt', 
+            projectId, 
+            totalTasks: 0, 
+            completedTasks: 0, 
+            note: 'No issues found in this project yet',
+            customDateFields: dateFields
+          },
           'Gantt Chart Data'
         );
       }
 
-      // Process issues into Gantt chart format
-      const ganttData = issues.map((issue: any) => ({
-        id: issue.id,
-        name: issue.summary,
-        start: issue.created,
-        end: issue.resolved || new Date().toISOString(),
-        duration: issue.resolved ? 
-          new Date(issue.resolved).getTime() - new Date(issue.created).getTime() : 
-          Date.now() - new Date(issue.created).getTime(),
-        status: issue.resolved ? 'completed' : 'in-progress'
-      }));
+      // Process issues into Gantt chart format with custom date field support
+      const ganttData = issues.map((issue: any) => {
+        // Try to use custom date fields first, fallback to created/resolved
+        let startDate: string;
+        let endDate: string;
+        let usedCustomFields = false;
+        
+        // Check for custom Start Date field
+        if (dateFields.startDateField) {
+          const customStart = this.extractCustomDateValue(issue, dateFields.startDateField);
+          if (customStart) {
+            startDate = customStart;
+            usedCustomFields = true;
+          } else {
+            startDate = issue.created;
+          }
+        } else {
+          startDate = issue.created;
+        }
+        
+        // Check for custom Due Date field
+        if (dateFields.dueDateField) {
+          const customDue = this.extractCustomDateValue(issue, dateFields.dueDateField);
+          if (customDue) {
+            endDate = customDue;
+            usedCustomFields = true;
+          } else {
+            endDate = issue.resolved || new Date().toISOString();
+          }
+        } else {
+          endDate = issue.resolved || new Date().toISOString();
+        }
+        
+        // Calculate duration
+        const duration = new Date(endDate).getTime() - new Date(startDate).getTime();
+        
+        // Determine status
+        let status: string;
+        if (issue.resolved) {
+          status = 'completed';
+        } else if (usedCustomFields && new Date(endDate).getTime() < Date.now()) {
+          status = 'overdue';
+        } else {
+          status = 'in-progress';
+        }
+        
+        return {
+          id: issue.id,
+          name: issue.summary,
+          start: startDate,
+          end: endDate,
+          duration,
+          status,
+          ...(usedCustomFields ? { usedCustomDateFields: true } : {})
+        };
+      });
 
       return ResponseFormatter.formatAnalytics(
         ganttData,
@@ -521,7 +632,10 @@ export class AdminAPIClient extends BaseAPIClient {
           reportType: 'gantt',
           projectId,
           totalTasks: ganttData.length,
-          completedTasks: ganttData.filter((task: any) => task.status === 'completed').length
+          completedTasks: ganttData.filter((task: any) => task.status === 'completed').length,
+          overdueCount: ganttData.filter((task: any) => task.status === 'overdue').length,
+          customDateFields: dateFields,
+          usingCustomDateFields: !!(dateFields.startDateField || dateFields.dueDateField)
         },
         'Gantt Chart Data'
       );
