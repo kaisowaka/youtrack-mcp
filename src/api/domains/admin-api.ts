@@ -1,5 +1,7 @@
 import { BaseAPIClient, MCPResponse } from '../base/base-client.js';
 import { ResponseFormatter } from '../base/response-formatter.js';
+import { FieldSelector } from '../../utils/field-selector.js';
+import { PerformanceMonitor } from '../../utils/performance-monitor.js';
 
 export interface ProjectCreateParams {
   name: string;
@@ -886,11 +888,12 @@ export class AdminAPIClient extends BaseAPIClient {
     sprintId?: string,
     includeWorkItems: boolean = false
   ): Promise<MCPResponse> {
-    try {
-      // First get project shortName
-      const projectEndpoint = `/admin/projects/${projectId}`;
-      const projectParams = { fields: 'id,shortName,name' };
-      const projectResponse = await this.axios.get(projectEndpoint, { params: projectParams });
+    return PerformanceMonitor.measure('gantt_chart_generation', async () => {
+      try {
+        // First get project shortName
+        const projectEndpoint = `/admin/projects/${projectId}`;
+        const projectParams = { fields: FieldSelector.PROJECT };
+        const projectResponse = await this.axios.get(projectEndpoint, { params: projectParams });
       
       if (!projectResponse.data) {
         throw new Error(`Project ${projectId} not found`);
@@ -910,7 +913,7 @@ export class AdminAPIClient extends BaseAPIClient {
       const endpoint = `/issues`;
       const params: any = {
         query,
-        fields: 'id,summary,created,resolved,customFields(name,value)',
+        fields: FieldSelector.GANTT, // Optimized field selection
         $top: 1000
       };
 
@@ -1223,9 +1226,10 @@ export class AdminAPIClient extends BaseAPIClient {
         metadata,
         'Gantt Chart Data'
       );
-    } catch (error: any) {
-      return ResponseFormatter.formatError(`Failed to generate Gantt chart: ${error.message}`, error);
-    }
+      } catch (error: any) {
+        return ResponseFormatter.formatError(`Failed to generate Gantt chart: ${error.message}`, error);
+      }
+    });
   }
 
   /**
@@ -1287,52 +1291,217 @@ export class AdminAPIClient extends BaseAPIClient {
 
   /**
    * Get resource allocation report
+   * Shows team capacity, workload distribution, and over/under allocation
    */
-  async getResourceAllocation(projectId: string): Promise<MCPResponse> {
+  async getResourceAllocation(
+    projectId: string,
+    startDate?: string,
+    endDate?: string
+  ): Promise<MCPResponse> {
     try {
-      // First get project shortName
-      const projectEndpoint = `/admin/projects/${projectId}`;
-      const projectParams = { fields: 'id,shortName,name' };
-      const projectResponse = await this.axios.get(projectEndpoint, { params: projectParams });
-      
-      if (!projectResponse.data) {
-        throw new Error(`Project ${projectId} not found`);
-      }
-      
-      const shortName = projectResponse.data.shortName;
-      
-      const endpoint = `/issues`;
-      const params: any = {
-        query: `project: ${shortName}`,
-        fields: 'id,summary,assignee,customFields(name,value)',
-        $top: 1000
-      };
+      // Default capacity (40 hours/week, can be overridden)
+      const DEFAULT_WEEKLY_CAPACITY = 40;
 
-      const response = await this.axios.get(endpoint, { params });
-      const issues = response.data || [];
-
-      // Group by assignee
-      const allocation: any = {};
-      issues.forEach((issue: any) => {
-        const assignee = issue.assignee?.login || 'Unassigned';
-        if (!allocation[assignee]) {
-          allocation[assignee] = {
-            assignee,
-            totalIssues: 0,
-            openIssues: 0,
-            resolvedIssues: 0,
-            workload: 0
-          };
+      // 1. Get all users who have worked on or are assigned to the project
+      const issueQuery = `project: ${projectId}${startDate && endDate ? ` created: ${startDate} .. ${endDate}` : ''}`;
+      
+      const issuesResponse = await this.axios.get('/issues', {
+        params: {
+          query: issueQuery,
+          fields: 'id,assignee(id,login,fullName,email),reporter(id,login,fullName,email),customFields(id,name,value)'
         }
-        allocation[assignee].totalIssues++;
-        // Add more detailed analysis based on issue state and time tracking
       });
 
-      return ResponseFormatter.formatAnalytics(
-        Object.values(allocation),
-        { reportType: 'resource_allocation', projectId },
-        'Resource Allocation Report'
+      const issues = issuesResponse.data;
+
+      // 2. Extract unique users from assignees and reporters
+      const userMap = new Map<string, any>();
+      
+      for (const issue of issues) {
+        if (issue.assignee) {
+          userMap.set(issue.assignee.login, issue.assignee);
+        }
+        if (issue.reporter && !userMap.has(issue.reporter.login)) {
+          userMap.set(issue.reporter.login, issue.reporter);
+        }
+      }
+
+      // 3. Calculate allocation for each user
+      const userAllocations = await Promise.all(
+        Array.from(userMap.values()).map(async (user) => {
+          // Get user's assigned issues
+          const userIssuesQuery = `project: ${projectId} assignee: ${user.login} state: -Resolved, -Fixed, -Verified${startDate && endDate ? ` created: ${startDate} .. ${endDate}` : ''}`;
+          
+          const userIssuesResponse = await this.axios.get('/issues', {
+            params: {
+              query: userIssuesQuery,
+              fields: 'id,idReadable,summary,priority(name),customFields(id,name,value),created,resolved'
+            }
+          });
+
+          const userIssues = userIssuesResponse.data;
+
+          // Get work items for actual hours
+          let actualHours = 0;
+          try {
+            const workItemsQuery = `project: ${projectId} author: ${user.login}${startDate && endDate ? ` date: ${startDate} .. ${endDate}` : ''}`;
+            const workItemsResponse = await this.axios.get('/workItems', {
+              params: {
+                query: workItemsQuery,
+                fields: 'duration(minutes)'
+              }
+            });
+
+            actualHours = workItemsResponse.data.reduce(
+              (sum: number, item: any) => sum + (item.duration?.minutes || 0),
+              0
+            ) / 60;
+          } catch (error) {
+            // Work items may not be available, skip
+          }
+
+          // Calculate estimated hours from custom fields
+          let estimatedHours = 0;
+          for (const issue of userIssues) {
+            const estimateField = issue.customFields?.find((f: any) => 
+              f.name?.toLowerCase().includes('estimat') || 
+              f.name?.toLowerCase().includes('time')
+            );
+            if (estimateField?.value?.minutes) {
+              estimatedHours += estimateField.value.minutes / 60;
+            }
+          }
+
+          // Count issues by priority and type
+          const priorityCounts = {
+            critical: 0,
+            high: 0,
+            normal: 0,
+            low: 0
+          };
+
+          const typeCounts: Record<string, number> = {};
+
+          for (const issue of userIssues) {
+            const priority = issue.priority?.name?.toLowerCase() || 'normal';
+            if (priority.includes('critical')) priorityCounts.critical++;
+            else if (priority.includes('high')) priorityCounts.high++;
+            else if (priority.includes('low')) priorityCounts.low++;
+            else priorityCounts.normal++;
+
+            const typeField = issue.customFields?.find((f: any) => f.name === 'Type');
+            const type = typeField?.value?.name || 'Other';
+            typeCounts[type] = (typeCounts[type] || 0) + 1;
+          }
+
+          // Count completed issues
+          const completedIssues = userIssues.filter((i: any) => i.resolved).length;
+          const activeIssues = userIssues.length - completedIssues;
+
+          // Calculate capacity metrics
+          const capacityPercentage = estimatedHours > 0 
+            ? Math.round((estimatedHours / DEFAULT_WEEKLY_CAPACITY) * 100)
+            : 0;
+
+          const overAllocated = capacityPercentage > 100;
+          const underAllocated = capacityPercentage < 50;
+
+          return {
+            user: {
+              id: user.id,
+              login: user.login,
+              name: user.fullName,
+              email: user.email
+            },
+            workload: {
+              assigned_issues: userIssues.length,
+              active_issues: activeIssues,
+              completed_issues: completedIssues
+            },
+            timeAllocation: {
+              estimated_hours: Math.round(estimatedHours * 10) / 10,
+              actual_hours: Math.round(actualHours * 10) / 10,
+              available_hours: DEFAULT_WEEKLY_CAPACITY
+            },
+            capacity: {
+              capacity_percentage: capacityPercentage,
+              over_allocated: overAllocated,
+              under_allocated: underAllocated,
+              status: overAllocated ? 'over-allocated' : underAllocated ? 'under-allocated' : 'optimal'
+            },
+            breakdown: {
+              by_priority: priorityCounts,
+              by_type: typeCounts
+            }
+          };
+        })
       );
+
+      // 4. Calculate team-level metrics
+      const teamCapacity = userAllocations.length * DEFAULT_WEEKLY_CAPACITY;
+      const totalEstimatedHours = userAllocations.reduce(
+        (sum, u) => sum + u.timeAllocation.estimated_hours,
+        0
+      );
+      const totalActualHours = userAllocations.reduce(
+        (sum, u) => sum + u.timeAllocation.actual_hours,
+        0
+      );
+      const teamUtilization = teamCapacity > 0 
+        ? Math.round((totalEstimatedHours / teamCapacity) * 100)
+        : 0;
+
+      const overAllocatedCount = userAllocations.filter(u => u.capacity.over_allocated).length;
+      const underAllocatedCount = userAllocations.filter(u => u.capacity.under_allocated).length;
+      const optimalCount = userAllocations.length - overAllocatedCount - underAllocatedCount;
+
+      // 5. Generate alerts
+      const alerts = [];
+      for (const user of userAllocations) {
+        if (user.capacity.over_allocated) {
+          const excess = user.timeAllocation.estimated_hours - user.timeAllocation.available_hours;
+          alerts.push({
+            severity: 'warning',
+            user: user.user.name,
+            message: `${user.user.name} is ${user.capacity.capacity_percentage}% allocated. Redistribute or postpone ${Math.round(excess)} hours of work.`
+          });
+        }
+      }
+
+      if (teamUtilization > 95) {
+        alerts.push({
+          severity: 'critical',
+          message: `Team utilization at ${teamUtilization}%. Consider reducing scope or adding resources.`
+        });
+      }
+
+      // 6. Build response
+      const responseData = {
+        users: userAllocations,
+        teamMetrics: {
+          total_members: userAllocations.length,
+          team_capacity: teamCapacity,
+          team_utilization: teamUtilization,
+          total_estimated_hours: Math.round(totalEstimatedHours * 10) / 10,
+          total_actual_hours: Math.round(totalActualHours * 10) / 10,
+          distribution: {
+            over_allocated: overAllocatedCount,
+            optimal: optimalCount,
+            under_allocated: underAllocatedCount
+          }
+        },
+        alerts
+      };
+
+      const metadata = {
+        reportType: 'resource_allocation',
+        projectId,
+        dateRange: startDate && endDate ? { startDate, endDate } : null,
+        generatedAt: new Date().toISOString(),
+        weeklyCapacityHours: DEFAULT_WEEKLY_CAPACITY
+      };
+
+      return ResponseFormatter.formatAnalytics(responseData, metadata, 'Resource allocation report generated');
     } catch (error: any) {
       return ResponseFormatter.formatError(`Failed to generate resource allocation report: ${error.message}`, error);
     }
