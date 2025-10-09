@@ -528,7 +528,154 @@ export class AdminAPIClient extends BaseAPIClient {
     return null;
   }
 
-  async generateGanttChart(projectId: string): Promise<MCPResponse> {
+  /**
+   * Fetch issue links (dependencies) for issues
+   */
+  private async fetchIssueDependencies(issueIds: string[]): Promise<Map<string, any[]>> {
+    const dependencyMap = new Map<string, any[]>();
+    
+    // Fetch links for all issues in parallel (with reasonable batching to avoid overwhelming the API)
+    const batchSize = 10;
+    for (let i = 0; i < issueIds.length; i += batchSize) {
+      const batch = issueIds.slice(i, i + batchSize);
+      const promises = batch.map(async (issueId) => {
+        try {
+          const endpoint = `/issues/${issueId}/links`;
+          const params = { fields: 'id,direction,linkType(name,directed,sourceToTarget,targetToSource),issues(id,idReadable)' };
+          const response = await this.axios.get(endpoint, { params });
+          const links = Array.isArray(response.data) ? response.data : [];
+          
+          // Process links to extract dependencies
+          const dependencies: any[] = [];
+          for (const link of links) {
+            const linkTypeName = link.linkType?.name?.toLowerCase() || '';
+            
+            // Only consider dependency-type links
+            if (linkTypeName.includes('depend') || linkTypeName.includes('block') || 
+                linkTypeName.includes('parent') || linkTypeName.includes('subtask')) {
+              
+              // Determine the target issue(s)
+              if (link.issues && Array.isArray(link.issues)) {
+                for (const linkedIssue of link.issues) {
+                  dependencies.push({
+                    id: linkedIssue.id,
+                    idReadable: linkedIssue.idReadable,
+                    type: link.linkType?.name || 'depends',
+                    direction: link.direction || 'outward'
+                  });
+                }
+              }
+            }
+          }
+          
+          if (dependencies.length > 0) {
+            dependencyMap.set(issueId, dependencies);
+          }
+        } catch (error) {
+          // If we can't fetch links for an issue, just skip it
+        }
+      });
+      
+      await Promise.all(promises);
+    }
+    
+    return dependencyMap;
+  }
+
+  /**
+   * Calculate critical path using simplified algorithm
+   */
+  private calculateCriticalPath(tasks: any[], dependencies: Map<string, any[]>): Set<string> {
+    const criticalPath = new Set<string>();
+    
+    // Build adjacency list
+    const graph = new Map<string, string[]>();
+    const inDegree = new Map<string, number>();
+    const taskMap = new Map<string, any>();
+    
+    // Initialize
+    for (const task of tasks) {
+      taskMap.set(task.id, task);
+      graph.set(task.id, []);
+      inDegree.set(task.id, 0);
+    }
+    
+    // Build graph from dependencies
+    for (const [sourceId, deps] of dependencies.entries()) {
+      for (const dep of deps) {
+        if (taskMap.has(dep.id) && taskMap.has(sourceId)) {
+          // Add edge from dependency to source (dependency must complete before source)
+          const depList = graph.get(dep.id) || [];
+          depList.push(sourceId);
+          graph.set(dep.id, depList);
+          inDegree.set(sourceId, (inDegree.get(sourceId) || 0) + 1);
+        }
+      }
+    }
+    
+    // Find tasks with longest path (simplified critical path)
+    // Start with tasks that have no dependencies (in-degree 0)
+    const startTasks: string[] = [];
+    for (const [taskId, degree] of inDegree.entries()) {
+      if (degree === 0) {
+        startTasks.push(taskId);
+      }
+    }
+    
+    // Calculate earliest finish times using topological sort
+    const earliestFinish = new Map<string, number>();
+    const queue = [...startTasks];
+    
+    for (const taskId of queue) {
+      const task = taskMap.get(taskId);
+      if (!task) continue;
+      
+      const taskDuration = task.duration || 0;
+      let maxPrereqFinish = 0;
+      
+      // Check all predecessors
+      for (const [predId, successors] of graph.entries()) {
+        if (successors.includes(taskId)) {
+          const predFinish = earliestFinish.get(predId) || 0;
+          maxPrereqFinish = Math.max(maxPrereqFinish, predFinish);
+        }
+      }
+      
+      earliestFinish.set(taskId, maxPrereqFinish + taskDuration);
+      
+      // Add successors to queue
+      const successors = graph.get(taskId) || [];
+      for (const successor of successors) {
+        if (!queue.includes(successor)) {
+          queue.push(successor);
+        }
+      }
+    }
+    
+    // Find longest path (critical path) - simplified approach
+    // Mark tasks with longest durations and high dependency count
+    let maxFinish = 0;
+    for (const finish of earliestFinish.values()) {
+      maxFinish = Math.max(maxFinish, finish);
+    }
+    
+    // Tasks on critical path are those with earliest finish == latest finish (no slack)
+    // For simplicity, mark tasks with > 2 dependencies or longest durations
+    for (const [taskId, finish] of earliestFinish.entries()) {
+      const deps = dependencies.get(taskId) || [];
+      const task = taskMap.get(taskId);
+      
+      // Critical if: at the end of the longest path or has many dependencies
+      if (finish >= maxFinish * 0.9 || deps.length > 2 || 
+          (task && task.duration >= maxFinish * 0.3)) {
+        criticalPath.add(taskId);
+      }
+    }
+    
+    return criticalPath;
+  }
+
+  async generateGanttChart(projectId: string, includeDependencies: boolean = false): Promise<MCPResponse> {
     try {
       // First get project shortName
       const projectEndpoint = `/admin/projects/${projectId}`;
@@ -563,10 +710,20 @@ export class AdminAPIClient extends BaseAPIClient {
             totalTasks: 0, 
             completedTasks: 0, 
             note: 'No issues found in this project yet',
-            customDateFields: dateFields
+            customDateFields: dateFields,
+            includeDependencies
           },
           'Gantt Chart Data'
         );
+      }
+
+      // Fetch dependencies if requested
+      let dependencyMap = new Map<string, any[]>();
+      let criticalPath = new Set<string>();
+      
+      if (includeDependencies) {
+        const issueIds = issues.map((issue: any) => issue.id);
+        dependencyMap = await this.fetchIssueDependencies(issueIds);
       }
 
       // Process issues into Gantt chart format with custom date field support
@@ -615,7 +772,8 @@ export class AdminAPIClient extends BaseAPIClient {
           status = 'in-progress';
         }
         
-        return {
+        // Build task object
+        const task: any = {
           id: issue.id,
           name: issue.summary,
           start: startDate,
@@ -624,19 +782,46 @@ export class AdminAPIClient extends BaseAPIClient {
           status,
           ...(usedCustomFields ? { usedCustomDateFields: true } : {})
         };
+        
+        // Add dependency information if available
+        if (includeDependencies && dependencyMap.has(issue.id)) {
+          task.dependencies = dependencyMap.get(issue.id);
+        }
+        
+        return task;
       });
+
+      // Calculate critical path if dependencies were fetched
+      if (includeDependencies && dependencyMap.size > 0) {
+        criticalPath = this.calculateCriticalPath(ganttData, dependencyMap);
+        
+        // Mark critical path tasks
+        for (const task of ganttData) {
+          if (criticalPath.has(task.id)) {
+            task.criticalPath = true;
+          }
+        }
+      }
+
+      const metadata: any = {
+        reportType: 'gantt',
+        projectId,
+        totalTasks: ganttData.length,
+        completedTasks: ganttData.filter((task: any) => task.status === 'completed').length,
+        overdueCount: ganttData.filter((task: any) => task.status === 'overdue').length,
+        customDateFields: dateFields,
+        usingCustomDateFields: !!(dateFields.startDateField || dateFields.dueDateField)
+      };
+      
+      if (includeDependencies) {
+        metadata.dependenciesIncluded = true;
+        metadata.totalDependencies = Array.from(dependencyMap.values()).reduce((sum, deps) => sum + deps.length, 0);
+        metadata.criticalPathTasks = criticalPath.size;
+      }
 
       return ResponseFormatter.formatAnalytics(
         ganttData,
-        { 
-          reportType: 'gantt',
-          projectId,
-          totalTasks: ganttData.length,
-          completedTasks: ganttData.filter((task: any) => task.status === 'completed').length,
-          overdueCount: ganttData.filter((task: any) => task.status === 'overdue').length,
-          customDateFields: dateFields,
-          usingCustomDateFields: !!(dateFields.startDateField || dateFields.dueDateField)
-        },
+        metadata,
         'Gantt Chart Data'
       );
     } catch (error: any) {

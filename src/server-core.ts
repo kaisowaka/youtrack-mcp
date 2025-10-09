@@ -934,7 +934,7 @@ export class YouTrackMCPServer {
   }
 
   private async handleAnalyticsReport(client: any, args: any) {
-    const { reportType, projectId, startDate, endDate, userId, milestoneId } = args;
+    const { reportType, projectId, startDate, endDate, userId, milestoneId, includeDependencies } = args;
     
     // Validate project ID for project-specific reports
     const needsProjectId = ['project_stats', 'gantt', 'critical_path', 'resource_allocation'];
@@ -970,7 +970,7 @@ export class YouTrackMCPServer {
       case 'time_tracking':
         return await client.admin.getTimeTrackingReport(startDate, endDate, 'user', projectId, userId);
       case 'gantt':
-        return await client.admin.generateGanttChart(projectId || this.resolveProjectId(), startDate, endDate);
+        return await client.admin.generateGanttChart(projectId || this.resolveProjectId(), includeDependencies || false);
       case 'critical_path':
         return await client.admin.getCriticalPath(projectId || this.resolveProjectId());
       case 'resource_allocation':
