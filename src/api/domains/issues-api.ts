@@ -1,6 +1,7 @@
-import { BaseAPIClient, MCPResponse } from '../base/base-client.js';
-import { ResponseFormatter } from '../base/response-formatter.js';
+import { BaseAPIClient } from '../base/base-client.js';
+import { ResponseFormatter, type MCPResponse } from '../base/response-formatter.js';
 import { logger } from '../../logger.js';
+import { sanitizeDescription, sanitizeComment } from '../../utils/text-sanitizer.js';
 
 export interface IssueCreateParams {
   summary: string;
@@ -60,7 +61,7 @@ export class IssuesAPIClient extends BaseAPIClient {
         $type: 'Issue',
         project: projectRef,
         summary: params.summary,
-        description: params.description || '',
+        description: sanitizeDescription(params.description),
         ...this.buildCustomFields(params)
       };
       
@@ -151,7 +152,7 @@ export class IssuesAPIClient extends BaseAPIClient {
     // We'll split updates into: basic fields (summary/description), and custom field commands
     const basicFieldPayload: any = {};
     if (updates.summary) basicFieldPayload.summary = updates.summary;
-    if (updates.description) basicFieldPayload.description = updates.description;
+    if (updates.description) basicFieldPayload.description = sanitizeDescription(updates.description);
 
     const commandParts: string[] = [];
     // Only push commands for fields provided
@@ -292,7 +293,7 @@ export class IssuesAPIClient extends BaseAPIClient {
     
     const commentData = { 
       $type: 'IssueComment',
-      text 
+      text: sanitizeComment(text)
     };
     const response = await this.post(endpoint, commentData);
     
@@ -307,7 +308,7 @@ export class IssuesAPIClient extends BaseAPIClient {
     
     const commentData = { 
       $type: 'IssueComment',
-      text 
+      text: sanitizeComment(text)
     };
     const response = await this.post(endpoint, commentData);
     return ResponseFormatter.formatUpdated(response.data, 'Comment', { text }, 'Comment updated successfully');
@@ -670,5 +671,62 @@ export class IssuesAPIClient extends BaseAPIClient {
    */
   async startWorkingOnIssue(issueId: string, comment?: string): Promise<MCPResponse> {
     return this.changeIssueState(issueId, 'In Progress', comment);
+  }
+
+  /**
+   * Move issue to another project
+   */
+  async moveIssueToProject(issueId: string, targetProjectId: string, comment?: string): Promise<MCPResponse> {
+    try {
+      const endpoint = `/issues/${issueId}/project?fields=id,idReadable,summary,project(id,name,shortName)`;
+      
+      // Determine if targetProjectId is internal ID or shortName
+      const isInternalId = /^\d+-\d+$/.test(targetProjectId);
+      const projectRef: any = { $type: 'Project' };
+      
+      if (isInternalId) {
+        projectRef.id = targetProjectId;
+      } else {
+        projectRef.shortName = targetProjectId;
+      }
+
+      const response = await this.post(endpoint, projectRef);
+
+      // Optionally add a comment about the move
+      if (comment) {
+        try {
+          await this.post(`/issues/${issueId}/comments`, {
+            text: `Moved to project ${targetProjectId}. ${comment}`
+          });
+        } catch (err) {
+          console.warn('Failed to add comment after moving issue:', err);
+        }
+      }
+
+      return ResponseFormatter.formatSuccess(
+        response.data,
+        `Issue ${issueId} successfully moved to project ${targetProjectId}`
+      );
+
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        return ResponseFormatter.formatError(
+          `Issue ${issueId} or project ${targetProjectId} not found.`,
+          { issueId, targetProjectId }
+        );
+      }
+      
+      if (error.response?.status === 403) {
+        return ResponseFormatter.formatError(
+          `You don't have permission to move issue ${issueId} to project ${targetProjectId}.`,
+          { issueId, targetProjectId, action: 'move' }
+        );
+      }
+
+      return ResponseFormatter.formatError(
+        `Failed to move issue: ${error.message}`,
+        { issueId, targetProjectId, action: 'move' }
+      );
+    }
   }
 }

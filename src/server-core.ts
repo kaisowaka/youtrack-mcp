@@ -68,16 +68,20 @@ function createToolDefinitions(configLoader: DynamicConfigLoader) {
       properties: {
         action: {
           type: 'string',
-          enum: ['create', 'update', 'get', 'query', 'search', 'state', 'complete', 'start', 'link'],
-          description: 'Action: create (new issue), update (modify), get (single issue), query (advanced search), search (smart search), state (change state), complete (mark done), start (begin work), link (relate issues)'
+          enum: ['create', 'update', 'get', 'query', 'search', 'state', 'complete', 'start', 'link', 'move'],
+          description: 'Action: create (new issue), update (modify), get (single issue), query (advanced search), search (smart search), state (change state), complete (mark done), start (begin work), link (relate issues), move (move to another project)'
         },
         projectId: {
           type: 'string',
-          description: 'Project ID (required for create action)'
+          description: 'Project ID (required for create action, optional for search)'
         },
         issueId: {
           type: 'string',
-          description: 'Issue ID (required for update, get, state, complete, start actions)'
+          description: 'Issue ID (required for update, get, state, complete, start, move actions)'
+        },
+        targetProjectId: {
+          type: 'string',
+          description: 'Target project ID or shortName (required for move action)'
         },
         summary: {
           type: 'string',
@@ -753,7 +757,7 @@ export class YouTrackMCPServer {
   }
 
   private async handleIssuesManage(client: any, args: any) {
-    const { action, projectId, issueId, summary, description, query, state, comment, priority, assignee, type, targetIssueId, linkType } = args;
+    const { action, projectId, issueId, summary, description, query, state, comment, priority, assignee, type, targetIssueId, targetProjectId, linkType } = args;
     let normalizedLinkType = linkType;
     
     // Validate parameters based on action
@@ -769,6 +773,10 @@ export class YouTrackMCPServer {
         case 'complete':
         case 'start':
           ParameterValidator.validateIssueId(issueId, 'issueId');
+          break;
+        case 'move':
+          ParameterValidator.validateIssueId(issueId, 'issueId');
+          ParameterValidator.validateProjectId(targetProjectId, 'targetProjectId');
           break;
         case 'link':
           ParameterValidator.validateIssueId(issueId, 'issueId');
@@ -816,6 +824,8 @@ export class YouTrackMCPServer {
         return await client.issues.completeIssue(issueId, comment);
       case 'start':
         return await client.issues.startWorkingOnIssue(issueId, comment);
+      case 'move':
+        return await client.issues.moveIssueToProject(issueId, targetProjectId, comment);
       case 'link':
         return await client.issues.linkIssues(issueId, targetIssueId, normalizedLinkType);
       default:

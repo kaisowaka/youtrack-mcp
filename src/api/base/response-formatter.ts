@@ -1,5 +1,7 @@
 import { MCPResponse } from './base-client.js';
 
+export type { MCPResponse };
+
 export interface ResponseMetadata {
   cached?: boolean;
   timestamp?: string;
