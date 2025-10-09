@@ -44,61 +44,104 @@ export class IssuesAPIClient extends BaseAPIClient {
    * Create a new issue
    */
   async createIssue(projectId: string, params: IssueCreateParams): Promise<MCPResponse> {
-    const endpoint = `/issues`;
-    
-    // Accept either internal ID (e.g., 0-2) or shortName (e.g., MYDAPI)
-    const isInternalId = /^\d+-\d+$/.test(projectId);
-    const projectRef: any = { $type: 'Project' };
-    if (isInternalId) {
-      projectRef.id = projectId;
-    } else {
-      projectRef.shortName = projectId;
-    }
-
-    const issueData = {
-      $type: 'Issue',
-      project: projectRef,
-      summary: params.summary,
-      description: params.description || '',
-      ...this.buildCustomFields(params)
-    };
-    
-    const response = await this.post(endpoint, issueData);
-    const issueId = response.data.id;
-    
-    // Apply custom fields via commands after creation (more reliable)
-    if (issueId && (params.type || params.priority || params.state || params.assignee || params.subsystem)) {
-      try {
-        await this.applyCustomFieldsViaCommands(issueId, params);
-      } catch (error) {
-        console.warn(`Issue ${issueId} created but failed to apply some custom fields:`, error);
+    try {
+      const endpoint = `/issues`;
+      
+      // Accept either internal ID (e.g., 0-2) or shortName (e.g., MYDAPI)
+      const isInternalId = /^\d+-\d+$/.test(projectId);
+      const projectRef: any = { $type: 'Project' };
+      if (isInternalId) {
+        projectRef.id = projectId;
+      } else {
+        projectRef.shortName = projectId;
       }
+
+      const issueData = {
+        $type: 'Issue',
+        project: projectRef,
+        summary: params.summary,
+        description: params.description || '',
+        ...this.buildCustomFields(params)
+      };
+      
+      const response = await this.post(endpoint, issueData);
+      const issueId = response.data.id;
+      
+      // Apply custom fields via commands after creation (more reliable)
+      if (issueId && (params.type || params.priority || params.state || params.assignee || params.subsystem)) {
+        try {
+          await this.applyCustomFieldsViaCommands(issueId, params);
+        } catch (error) {
+          logger.warn(`Issue ${issueId} created but failed to apply some custom fields:`, error);
+        }
+      }
+      
+      return ResponseFormatter.formatCreated(response.data, 'Issue', `Issue "${params.summary}" created successfully`);
+    } catch (error: any) {
+      // Check for common errors
+      if (error.message?.includes('404') || error.message?.includes('not found')) {
+        return ResponseFormatter.formatError(
+          `Project ${projectId} not found. Please check the project ID.`,
+          { projectId, summary: params.summary }
+        );
+      }
+      
+      if (error.message?.includes('403') || error.message?.includes('Forbidden')) {
+        return ResponseFormatter.formatError(
+          `You don't have permission to create issues in project ${projectId}.`,
+          { projectId, action: 'create' }
+        );
+      }
+      
+      // Other errors
+      return ResponseFormatter.formatError(
+        error.message || String(error),
+        { projectId, summary: params.summary, action: 'create' }
+      );
     }
-    
-    return ResponseFormatter.formatCreated(response.data, 'Issue', `Issue "${params.summary}" created successfully`);
   }
   
   /**
    * Get issue by ID with full details
    */
   async getIssue(issueId: string, fields?: string): Promise<MCPResponse> {
-    const endpoint = `/issues/${issueId}`;
-    
-    // Default to comprehensive fields if not specified
-    const defaultFields = 'id,idReadable,summary,description,created,updated,resolved,' +
-      'reporter(login,fullName,email),' +
-      'updater(login,fullName),' +
-      'project(id,name,shortName),' +
-      'customFields(id,name,value(id,name,isResolved,minutes,presentation)),' +
-      'tags(id,name),' +
-      'comments(id,text,created,author(login,fullName)),' +
-      'attachments(id,name,size,mimeType)';
-    
-    const response = await this.get(endpoint, {
-      fields: fields || defaultFields
-    });
-    
-    return ResponseFormatter.formatSuccess(response.data, `Retrieved issue ${issueId}`);
+    try {
+      const endpoint = `/issues/${issueId}`;
+      
+      // Default to comprehensive fields if not specified
+      const defaultFields = 'id,idReadable,summary,description,created,updated,resolved,' +
+        'reporter(login,fullName,email),' +
+        'updater(login,fullName),' +
+        'project(id,name,shortName),' +
+        'customFields(id,name,value(id,name,isResolved,minutes,presentation)),' +
+        'tags(id,name),' +
+        'comments(id,text,created,author(login,fullName)),' +
+        'attachments(id,name,size,mimeType)';
+      
+      const response = await this.get(endpoint, {
+        fields: fields || defaultFields
+      });
+      
+      return ResponseFormatter.formatSuccess(response.data, `Retrieved issue ${issueId}`);
+    } catch (error: any) {
+      // Check for 404 - issue not found
+      if (error.message?.includes('404') || error.message?.includes('not found')) {
+        return ResponseFormatter.formatError(
+          `Issue ${issueId} does not exist or you don't have access to it.`,
+          { 
+            issueId, 
+            suggestion: 'Check the issue ID or use the query tool to list available issues',
+            hint: 'You can run a query like "project: PROJECTNAME" to see all issues in a project'
+          }
+        );
+      }
+      
+      // Other errors
+      return ResponseFormatter.formatError(
+        error.message || String(error),
+        { issueId, action: 'get' }
+      );
+    }
   }
   
   /**
@@ -190,22 +233,41 @@ export class IssuesAPIClient extends BaseAPIClient {
    * Query issues with YouTrack search syntax
    */
   async queryIssues(params: IssueQueryParams): Promise<MCPResponse> {
-    const endpoint = `/issues`;
-    
-    const queryParams = {
-      query: params.query,
-      fields: params.fields || 'id,summary,description,state,priority,reporter,assignee,created,updated',
-      $top: params.limit || 50,
-      $skip: params.skip || 0
-    };
-    
-    const response = await this.get(endpoint, queryParams);
-    const issues = response.data || [];
-    
-    return ResponseFormatter.formatList(issues, 'issue', {
-      totalCount: issues.length,
-      filters: { query: params.query }
-    });
+    try {
+      const endpoint = `/issues`;
+      
+      const queryParams = {
+        query: params.query,
+        fields: params.fields || 'id,idReadable,summary,description,customFields(name,value(name)),created,updated',
+        $top: params.limit || 50,
+        $skip: params.skip || 0
+      };
+      
+      const response = await this.get(endpoint, queryParams);
+      const issues = response.data || [];
+      
+      return ResponseFormatter.formatList(issues, 'issue', {
+        totalCount: issues.length,
+        filters: { query: params.query }
+      });
+    } catch (error: any) {
+      // Check for query syntax errors
+      if (error.message?.includes('400') || error.message?.includes('Bad Request')) {
+        return ResponseFormatter.formatError(
+          `Invalid query syntax: "${params.query}". Please check your search query.`,
+          { 
+            query: params.query,
+            hint: 'Example queries: "project: MYPROJECT", "state: Open assignee: me", "#Bug"'
+          }
+        );
+      }
+      
+      // Other errors
+      return ResponseFormatter.formatError(
+        error.message || String(error),
+        { query: params.query, action: 'query' }
+      );
+    }
   }
   
   /**

@@ -50,7 +50,22 @@ export class ErrorHandler {
         responseData: data
       };
       
-      logError(new Error(message), errorContext);
+      // Only log stack traces for unexpected errors (not 404, 400, 403)
+      const isExpectedError = [400, 403, 404].includes(status);
+      if (isExpectedError) {
+        // Log without stack trace for expected errors
+        console.error(JSON.stringify({
+          timestamp: new Date().toISOString(),
+          level: 'warn',
+          message,
+          service: 'youtrack-mcp',
+          context: errorContext
+        }));
+      } else {
+        // Log with stack trace for unexpected errors
+        logError(new Error(message), errorContext);
+      }
+      
       throw new Error(message);
       
     } else if (error.request) {
