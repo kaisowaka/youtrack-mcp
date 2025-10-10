@@ -507,6 +507,89 @@ export class IssuesAPIClient extends BaseAPIClient {
   }
   
   /**
+   * Get available field values for a project (Type, Priority, State, etc.)
+   * This helps users/assistants discover what values are valid before creating/updating issues
+   * 
+   * @param projectId - Project ID or shortName (e.g., "MYPROJECT" or "0-2")
+   * @param fieldName - Field name (e.g., "Type", "Priority", "State")
+   * @returns MCPResponse with available values (sorted by ordinal, with localization support)
+   * 
+   * @example
+   * // Get available Type values for SoftEtherZig project
+   * const types = await client.getProjectFieldValues('SoftEtherZig', 'Type');
+   * // Returns: Task, Milestone, Subtask (sorted by ordinal)
+   */
+  async getProjectFieldValues(projectId: string, fieldName: string = 'Type'): Promise<MCPResponse> {
+    try {
+      // Get the project's custom fields with comprehensive field projection based on OpenAPI spec
+      // Includes: localizedName (i18n), ordinal (ordering), fieldType (type identification), isResolved (for states)
+      const fieldsResponse = await this.get(
+        `/admin/projects/${projectId}/customFields?fields=field($type,fieldType($type,id,valueType),id,localizedName,name),bundle($type,id,values(name,localizedName,description,color($type,background,foreground,id),ordinal,isResolved))`
+      );
+      
+      // Find the specific field
+      const targetField = fieldsResponse.data?.find((f: any) => 
+        f.field?.name === fieldName
+      );
+      
+      if (!targetField) {
+        return ResponseFormatter.formatError(
+          `Field "${fieldName}" not found in project ${projectId}`,
+          { projectId, fieldName, availableFields: fieldsResponse.data?.map((f: any) => f.field?.name).filter(Boolean) }
+        );
+      }
+      
+      if (!targetField.bundle?.values) {
+        return ResponseFormatter.formatError(
+          `Field "${fieldName}" has no available values configured`,
+          { projectId, fieldName }
+        );
+      }
+      
+      // Sort values by ordinal (respects YouTrack's ordering)
+      const sortedValues = [...targetField.bundle.values].sort((a: any, b: any) => {
+        const ordinalA = a.ordinal ?? Number.MAX_SAFE_INTEGER;
+        const ordinalB = b.ordinal ?? Number.MAX_SAFE_INTEGER;
+        return ordinalA - ordinalB;
+      });
+      
+      // Extract value information with localization and full metadata
+      const values = sortedValues.map((v: any) => ({
+        name: v.name,
+        localizedName: v.localizedName || null, // For i18n support
+        description: v.description || null,
+        ordinal: v.ordinal ?? null, // For ordering
+        isResolved: v.isResolved ?? null, // For state fields (resolved vs. open)
+        color: v.color ? {
+          background: v.color.background,
+          foreground: v.color.foreground
+        } : null
+      }));
+      
+      // Use localizedName when available, fall back to name
+      const valueNames = sortedValues.map((v: any) => v.localizedName || v.name).filter(Boolean);
+      
+      return ResponseFormatter.formatSuccess({
+        projectId,
+        fieldName: targetField.field?.localizedName || targetField.field?.name,
+        fieldType: targetField.field?.fieldType?.valueType || targetField.bundle?.$type,
+        bundleType: targetField.bundle?.$type, // EnumBundle, StateBundle, etc.
+        values,
+        valueCount: values.length,
+        // Quick list of just the names (localized when available)
+        valueNames
+      }, `Found ${values.length} values for ${fieldName} in project ${projectId}: ${valueNames.join(', ')}`);
+      
+    } catch (error) {
+      logger.error(`Failed to get field values for ${fieldName} in project ${projectId}`, error);
+      return ResponseFormatter.formatError(
+        error instanceof Error ? error.message : String(error),
+        { projectId, fieldName }
+      );
+    }
+  }
+  
+  /**
    * Change issue state with workflow validation
    */
   async changeIssueState(issueId: string, newState: string, comment?: string, resolution?: string): Promise<MCPResponse> {
@@ -648,11 +731,75 @@ export class IssuesAPIClient extends BaseAPIClient {
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         logger.warn(`Failed to apply command "${command}" to issue ${issueId}: ${errorMsg}`);
-        failures.push(`"${command}" failed: ${errorMsg}`);
+        
+        // Enhance error message with available values for Type and Priority fields
+        let enhancedError = `"${command}" failed: ${errorMsg}`;
+        
+        // Try to fetch available values to help the user
+        try {
+          if (command.startsWith('Type:')) {
+            const availableTypes = await this.getAvailableFieldValues(issueId, 'Type');
+            if (availableTypes.length > 0) {
+              enhancedError += `\n    Available Type values: ${availableTypes.join(', ')}`;
+            }
+          } else if (command.startsWith('Priority:')) {
+            const availablePriorities = await this.getAvailableFieldValues(issueId, 'Priority');
+            if (availablePriorities.length > 0) {
+              enhancedError += `\n    Available Priority values: ${availablePriorities.join(', ')}`;
+            }
+          }
+        } catch (fetchError) {
+          // If we can't fetch available values, just use the original error
+          logger.debug(`Could not fetch available field values: ${fetchError}`);
+        }
+        
+        failures.push(enhancedError);
       }
     }
     
     return failures;
+  }
+
+  /**
+   * Get available values for a field (Type, Priority, State, etc.) for a specific issue's project
+   * Uses localized names when available and respects field value ordering
+   * @private
+   */
+  private async getAvailableFieldValues(issueId: string, fieldName: string): Promise<string[]> {
+    try {
+      // First, get the issue to find its project
+      const issueResponse = await this.get(`/issues/${issueId}?fields=id,project(id,shortName)`);
+      const projectId = issueResponse.data.project?.id || issueResponse.data.project?.shortName;
+      
+      if (!projectId) {
+        return [];
+      }
+      
+      // Get the project's custom fields with localization and ordering support
+      const fieldsResponse = await this.get(`/admin/projects/${projectId}/customFields?fields=field(name),bundle(values(name,localizedName,ordinal))`);
+      
+      // Find the specific field (Type, Priority, etc.)
+      const targetField = fieldsResponse.data?.find((f: any) => 
+        f.field?.name === fieldName
+      );
+      
+      if (!targetField?.bundle?.values) {
+        return [];
+      }
+      
+      // Sort by ordinal if available
+      const sortedValues = [...targetField.bundle.values].sort((a: any, b: any) => {
+        const ordinalA = a.ordinal ?? Number.MAX_SAFE_INTEGER;
+        const ordinalB = b.ordinal ?? Number.MAX_SAFE_INTEGER;
+        return ordinalA - ordinalB;
+      });
+      
+      // Use localizedName when available, fall back to name
+      return sortedValues.map((v: any) => v.localizedName || v.name).filter(Boolean);
+    } catch (error) {
+      logger.debug(`Failed to fetch available values for ${fieldName}: ${error}`);
+      return [];
+    }
   }
 
   /**

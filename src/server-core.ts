@@ -62,18 +62,18 @@ function createToolDefinitions(configLoader: DynamicConfigLoader) {
   // ISSUE MANAGEMENT TOOLS  
   {
     name: 'issues',
-    description: 'Issue lifecycle: create, update, query/search, change state, comment, start/complete work, link issues, manage watchers',
+    description: 'Issue lifecycle: create, update, query/search, change state, comment, start/complete work, link issues, manage watchers, get field values',
     inputSchema: {
       type: 'object',
       properties: {
         action: {
           type: 'string',
-          enum: ['create', 'update', 'get', 'query', 'search', 'state', 'complete', 'start', 'link', 'move', 'watchers', 'add_watcher', 'remove_watcher', 'toggle_star'],
-          description: 'Action: create (new issue), update (modify), get (single issue), query (advanced search), search (smart search), state (change state), complete (mark done), start (begin work), link (relate issues), move (move to another project), watchers (get watchers), add_watcher (add user as watcher), remove_watcher (remove watcher), toggle_star (star/unstar issue)'
+          enum: ['create', 'update', 'get', 'query', 'search', 'state', 'complete', 'start', 'link', 'move', 'watchers', 'add_watcher', 'remove_watcher', 'toggle_star', 'get_field_values'],
+          description: 'Action: create (new issue), update (modify), get (single issue), query (advanced search), search (smart search), state (change state), complete (mark done), start (begin work), link (relate issues), move (move to another project), watchers (get watchers), add_watcher (add user as watcher), remove_watcher (remove watcher), toggle_star (star/unstar issue), get_field_values (discover available Type/Priority/State values for a project)'
         },
         projectId: {
           type: 'string',
-          description: 'Project ID (required for create action, optional for search)'
+          description: 'Project ID (required for create action, optional for search, required for get_field_values)'
         },
         issueId: {
           type: 'string',
@@ -86,6 +86,11 @@ function createToolDefinitions(configLoader: DynamicConfigLoader) {
         targetProjectId: {
           type: 'string',
           description: 'Target project ID or shortName (required for move action)'
+        },
+        fieldName: {
+          type: 'string',
+          description: 'Field name for get_field_values action (e.g., "Type", "Priority", "State"). Default: "Type"',
+          default: 'Type'
         },
         summary: {
           type: 'string',
@@ -113,7 +118,7 @@ function createToolDefinitions(configLoader: DynamicConfigLoader) {
         },
         type: {
           type: 'string',
-          description: `Issue type. Available types: ${typeExample}`
+          description: `Issue type. Available types: ${typeExample}. Use get_field_values action to discover project-specific types.`
         },
         comment: {
           type: 'string',
@@ -879,7 +884,7 @@ export class YouTrackMCPServer {
   }
 
   private async handleIssuesManage(client: any, args: any) {
-    const { action, projectId, issueId, userId, summary, description, query, state, comment, priority, assignee, type, targetIssueId, targetProjectId, linkType } = args;
+    const { action, projectId, issueId, userId, summary, description, query, state, comment, priority, assignee, type, targetIssueId, targetProjectId, linkType, fieldName } = args;
     let normalizedLinkType = linkType;
     
     // Validate parameters based on action
@@ -888,6 +893,9 @@ export class YouTrackMCPServer {
         case 'create':
           ParameterValidator.validateProjectId(projectId || this.resolveProjectId(), 'projectId');
           ParameterValidator.validateRequired(summary, 'summary');
+          break;
+        case 'get_field_values':
+          ParameterValidator.validateProjectId(projectId, 'projectId');
           break;
         case 'update':
         case 'get':
@@ -943,6 +951,8 @@ export class YouTrackMCPServer {
         });
       case 'get':
         return await client.issues.getIssue(issueId);
+      case 'get_field_values':
+        return await client.issues.getProjectFieldValues(projectId, fieldName || 'Type');
       case 'query':
         return await client.issues.queryIssues({ query });
       case 'search':
