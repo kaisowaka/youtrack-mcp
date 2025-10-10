@@ -69,15 +69,26 @@ export class IssuesAPIClient extends BaseAPIClient {
       const issueId = response.data.id;
       
       // Apply custom fields via commands after creation (more reliable)
+      const commandFailures: string[] = [];
       if (issueId && (params.type || params.priority || params.state || params.assignee || params.subsystem)) {
         try {
-          await this.applyCustomFieldsViaCommands(issueId, params);
+          const failures = await this.applyCustomFieldsViaCommands(issueId, params);
+          commandFailures.push(...failures);
         } catch (error) {
           logger.warn(`Issue ${issueId} created but failed to apply some custom fields:`, error);
+          commandFailures.push(`Unexpected error applying custom fields: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
       
-      return ResponseFormatter.formatCreated(response.data, 'Issue', `Issue "${params.summary}" created successfully`);
+      // Build response message with warnings if commands failed
+      let message = `Issue "${params.summary}" created successfully`;
+      if (commandFailures.length > 0) {
+        message += `\n\n⚠️ WARNINGS - Some custom fields could not be applied:\n${commandFailures.map(f => `  • ${f}`).join('\n')}`;
+        message += `\n\nThe issue was created (${issueId}) but you may need to set these fields manually in YouTrack.`;
+        message += `\n\nCommon causes:\n  • Field value doesn't exist in the project (e.g., "Bug" or "Feature" not configured)\n  • Field is not available for this project\n  • Invalid value format`;
+      }
+      
+      return ResponseFormatter.formatCreated(response.data, 'Issue', message);
     } catch (error: any) {
       // Check for common errors
       if (error.message?.includes('404') || error.message?.includes('not found')) {
@@ -601,8 +612,9 @@ export class IssuesAPIClient extends BaseAPIClient {
 
   /**
    * Apply custom fields to an issue using commands (more reliable than direct API)
+   * @returns Array of error messages for failed commands (empty if all succeeded)
    */
-  private async applyCustomFieldsViaCommands(issueId: string, params: any): Promise<void> {
+  private async applyCustomFieldsViaCommands(issueId: string, params: any): Promise<string[]> {
     const commands: string[] = [];
     
     // YouTrack command syntax: "FieldName: Value" or "FieldName Value" depending on the field
@@ -627,14 +639,20 @@ export class IssuesAPIClient extends BaseAPIClient {
       commands.push(`Subsystem: ${params.subsystem}`);
     }
     
+    const failures: string[] = [];
+    
     // Apply commands one by one
     for (const command of commands) {
       try {
         await this.applyCommand(issueId, command);
       } catch (error) {
-        console.warn(`Failed to apply command "${command}" to issue ${issueId}:`, error);
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        logger.warn(`Failed to apply command "${command}" to issue ${issueId}: ${errorMsg}`);
+        failures.push(`"${command}" failed: ${errorMsg}`);
       }
     }
+    
+    return failures;
   }
 
   /**
