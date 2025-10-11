@@ -71,20 +71,31 @@ export class WorkItemsAPIClient extends BaseAPIClient {
 
   /**
    * Log time to an issue
+   * NOTE: YouTrack API requires creating work items directly, not as issue subresources
    */
   async logTimeToIssue(issueId: string, duration: string, description?: string, date?: string, workType?: string): Promise<MCPResponse> {
     try {
-      const endpoint = `/issues/${issueId}/timeTracking/workItems`;
+      // Create work item at /workItems endpoint with issue reference
+      const endpoint = `/workItems?fields=id,date,duration(minutes,presentation),text,type(id,name),author(id,login,fullName),issue(id,idReadable)`;
       
-      const workData = {
-        duration: this.parseDurationToMinutes(duration),
-        description: description || '',
-        date: date ? new Date(date).getTime() : Date.now(),
-        type: workType ? { name: workType } : undefined
+      const workData: any = {
+        issue: { id: issueId },
+        duration: { minutes: this.parseDurationToMinutes(duration) },
+        text: description || '',
+        date: date ? new Date(date).getTime() : Date.now()
       };
 
+      if (workType) {
+        workData.type = { name: workType };
+      }
+
       const response = await this.post(endpoint, workData);
-      return ResponseFormatter.formatCreated(response.data, 'Time Entry', `Logged ${duration} to issue ${issueId}`);
+      
+      // Extract work item ID from response
+      const workItemId = response.data?.id || 'created';
+      const message = `Logged ${duration} to issue ${issueId}${workItemId !== 'created' ? ` (Work Item: ${workItemId})` : ''}`;
+      
+      return ResponseFormatter.formatCreated(response.data, 'Time Entry', message);
       
     } catch (error: any) {
       throw new Error(`Failed to log time: ${error.message}`);
@@ -96,15 +107,24 @@ export class WorkItemsAPIClient extends BaseAPIClient {
    */
   async getTimeEntries(issueId?: string, startDate?: string, endDate?: string, userId?: string): Promise<MCPResponse> {
     try {
-      const endpoint = issueId ? `/issues/${issueId}/timeTracking/workItems` : `/workItems`;
+      const endpoint = `/workItems`;
       
       const params: any = {
-        fields: 'id,duration,date,description,type(id,name),author(id,login,fullName),issue(id,summary)'
+        fields: 'id,duration(minutes,presentation),date,text,type(id,name),author(id,login,fullName),issue(id,summary)',
+        $top: 100  // Limit results
       };
 
-      if (startDate) params.startDate = startDate;
-      if (endDate) params.endDate = endDate;
-      if (userId) params.author = userId;
+      // Build query string for filtering
+      const queryParts: string[] = [];
+      if (issueId) queryParts.push(`issue: ${issueId}`);
+      if (userId) queryParts.push(`author: ${userId}`);
+      
+      if (queryParts.length > 0) {
+        params.query = queryParts.join(' ');
+      }
+
+      if (startDate) params.startDate = new Date(startDate).getTime();
+      if (endDate) params.endDate = new Date(endDate).getTime();
 
       const response = await this.get<TimeEntry[]>(endpoint, params);
       const timeEntries = response.data || [];
@@ -158,14 +178,21 @@ export class WorkItemsAPIClient extends BaseAPIClient {
    */
   async getWorkItems(issueId?: string, projectId?: string, userId?: string): Promise<MCPResponse> {
     try {
-  const endpoint = `/workItems`;
+      const endpoint = `/workItems`;
       const params: any = {
-        fields: 'id,duration,date,description,type(id,name),author(id,login,fullName),issue(id,summary,project(id,name,shortName))'
+        fields: 'id,duration(minutes,presentation),date,text,type(id,name),author(id,login,fullName),issue(id,summary,project(id,name,shortName))',
+        $top: 100
       };
 
-      if (issueId) params.issue = issueId;
-      if (projectId) params.project = projectId;
-      if (userId) params.author = userId;
+      // Build query for filtering
+      const queryParts: string[] = [];
+      if (issueId) queryParts.push(`issue: ${issueId}`);
+      if (projectId) queryParts.push(`project: ${projectId}`);
+      if (userId) queryParts.push(`author: ${userId}`);
+      
+      if (queryParts.length > 0) {
+        params.query = queryParts.join(' ');
+      }
 
       const response = await this.get<WorkItem[]>(endpoint, params);
       const workItems = response.data || [];
@@ -184,17 +211,24 @@ export class WorkItemsAPIClient extends BaseAPIClient {
    */
   async createWorkItem(params: WorkItemCreateParams): Promise<MCPResponse> {
     try {
-      const endpoint = `/issues/${params.issueId}/timeTracking/workItems`;
+      const endpoint = `/workItems?fields=id,date,duration(minutes,presentation),text,type(id,name),author(id,login,fullName),issue(id,idReadable)`;
       
-      const workData = {
-        duration: this.parseDurationToMinutes(params.duration),
-        description: params.description || '',
-        date: params.date ? new Date(params.date).getTime() : Date.now(),
-        type: params.workType ? { name: params.workType } : undefined
+      const workData: any = {
+        issue: { id: params.issueId },
+        duration: { minutes: this.parseDurationToMinutes(params.duration) },
+        text: params.description || '',
+        date: params.date ? new Date(params.date).getTime() : Date.now()
       };
+      
+      if (params.workType) {
+        workData.type = { name: params.workType };
+      }
 
       const response = await this.post(endpoint, workData);
-      return ResponseFormatter.formatCreated(response.data, 'Work Item', `Work item created for issue ${params.issueId}`);
+      const workItemId = response.data?.id || 'created';
+      const message = `Work item created for issue ${params.issueId}${workItemId !== 'created' ? ` (ID: ${workItemId})` : ''}`;
+      
+      return ResponseFormatter.formatCreated(response.data, 'Work Item', message);
       
     } catch (error: any) {
       throw new Error(`Failed to create work item: ${error.message}`);

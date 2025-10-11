@@ -403,39 +403,34 @@ export class IssuesAPIClient extends BaseAPIClient {
   }
   
   /**
+   * @deprecated Use WorkItemsAPIClient.getWorkItems() instead
    * Get issue work items (time tracking)
+   * NOTE: This endpoint doesn't exist in YouTrack API. Use /workItems with query parameter instead.
    */
   async getIssueWorkItems(issueId: string): Promise<MCPResponse> {
-    const endpoint = `/issues/${issueId}/workItems`;
-    
-    const response = await this.get(endpoint, {
-      fields: 'id,duration,description,date,author(login,name),type(name)'
-    });
-    const workItems = response.data || [];
-    
-    return ResponseFormatter.formatList(workItems, 'work item', {
-      totalCount: workItems.length
-    });
+    return ResponseFormatter.formatError(
+      'This method is deprecated. Use client.workItems.getWorkItems(issueId) instead.',
+      { 
+        issueId,
+        suggestion: 'Use the time_tracking tool with action "get_work_items" or call client.workItems.getWorkItems(issueId)'
+      }
+    );
   }
   
   /**
+   * @deprecated Use WorkItemsAPIClient.logTimeToIssue() instead
    * Add work item (log time) to issue
+   * NOTE: This endpoint doesn't exist in YouTrack API. Use /workItems POST instead.
    */
   async addWorkItem(issueId: string, duration: string, description?: string, date?: string, workType?: string): Promise<MCPResponse> {
-    const endpoint = `/issues/${issueId}/workItems`;
-    
-    const workItemData: any = {
-      duration: this.parseDuration(duration),
-      description: description || `Work logged for ${issueId}`,
-      date: date ? new Date(date).getTime() : Date.now()
-    };
-    
-    if (workType) {
-      workItemData.type = { name: workType };
-    }
-    
-    const response = await this.post(endpoint, workItemData);
-    return ResponseFormatter.formatCreated(response.data, 'Work Item', `Logged ${duration} for issue ${issueId}`);
+    return ResponseFormatter.formatError(
+      'This method is deprecated. Use client.workItems.logTimeToIssue() instead.',
+      { 
+        issueId,
+        duration,
+        suggestion: 'Use the time_tracking tool with action "log_time" or call client.workItems.logTimeToIssue(issueId, duration, description, date, workType)'
+      }
+    );
   }
   
   /**
