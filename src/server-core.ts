@@ -196,26 +196,27 @@ function createToolDefinitions(configLoader: DynamicConfigLoader) {
   // AGILE MANAGEMENT TOOLS
   {
     name: 'agile_boards',
-    description: 'Agile boards and sprints: list boards/sprints, get details, create sprints, assign issues',
+    description: 'Agile boards and sprints: list boards/sprints, get details, create/update/delete sprints, assign/unassign issues, get sprint issues',
     inputSchema: {
       type: 'object',
       properties: {
         action: {
           type: 'string',
-          enum: ['boards', 'board_details', 'sprints', 'sprint_details', 'create_sprint', 'assign_issue'],
-          description: 'Action: boards (list), board_details (get board), sprints (list), sprint_details (get sprint), create_sprint (new), assign_issue (to sprint)'
+          enum: ['boards', 'board_details', 'sprints', 'sprint_details', 'create_sprint', 'update_sprint', 'delete_sprint', 'archive_sprint', 'sprint_issues', 'assign_issues', 'unassign_issues'],
+          description: 'Action: boards (list all boards), board_details (get board details), sprints (list all sprints), sprint_details (get sprint details), create_sprint (create new sprint), update_sprint (update sprint), delete_sprint (delete sprint), archive_sprint (archive sprint), sprint_issues (get all issues in sprint), assign_issues (assign issues to sprint), unassign_issues (remove issues from sprint)'
         },
         boardId: {
           type: 'string',
-          description: 'Board ID (required for board_details, sprints, sprint_details, create_sprint)'
+          description: 'Board ID (required for board_details, sprints, sprint_details, create_sprint, update_sprint, delete_sprint, archive_sprint, sprint_issues, assign_issues)'
         },
         sprintId: {
           type: 'string',
-          description: 'Sprint ID (required for sprint_details, assign_issue)'
+          description: 'Sprint ID (required for sprint_details, update_sprint, delete_sprint, archive_sprint, sprint_issues, assign_issues, unassign_issues)'
         },
-        issueId: {
-          type: 'string',
-          description: 'Issue ID (required for assign_issue)'
+        issueIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of issue IDs (required for assign_issues, unassign_issues)'
         },
         projectId: {
           type: 'string',
@@ -223,15 +224,19 @@ function createToolDefinitions(configLoader: DynamicConfigLoader) {
         },
         name: {
           type: 'string',
-          description: 'Sprint name (for create_sprint)'
+          description: 'Sprint name (for create_sprint, update_sprint)'
         },
         start: {
           type: 'string',
-          description: 'Sprint start date YYYY-MM-DD (for create_sprint)'
+          description: 'Sprint start date YYYY-MM-DD (for create_sprint, update_sprint)'
         },
         finish: {
           type: 'string',
-          description: 'Sprint end date YYYY-MM-DD (for create_sprint)'
+          description: 'Sprint end date YYYY-MM-DD (for create_sprint, update_sprint)'
+        },
+        goal: {
+          type: 'string',
+          description: 'Sprint goal/description (for create_sprint, update_sprint)'
         }
       },
       required: ['action']
@@ -1031,23 +1036,44 @@ export class YouTrackMCPServer {
   }
 
   private async handleAgileManage(client: any, args: any) {
-    const { action, boardId, sprintId, issueId, projectId, name, start, finish } = args;
+    const { action, boardId, sprintId, issueIds, projectId, name, start, finish, goal } = args;
     
     switch (action) {
       case 'boards':
         return await client.agile.listAgileBoards({ projectId });
+      
       case 'board_details':
-        return await client.agile.getBoardDetails(boardId, true, true);
+        return await client.agile.getBoardDetails({ boardId, includeColumns: true, includeSprints: true });
+      
       case 'sprints':
-        return await client.agile.listSprints(boardId, false, false);
+        return await client.agile.listSprints({ boardId, includeArchived: false, includeIssues: false });
+      
       case 'sprint_details':
-        return await client.agile.getSprintDetails(boardId, sprintId, true);
+        return await client.agile.getSprintDetails({ boardId, sprintId });
+      
       case 'create_sprint':
-        return await client.agile.createSprint(boardId, name, start, finish);
-      case 'assign_issue':
-        return await client.agile.assignIssueToSprint(issueId, sprintId, boardId);
+        return await client.agile.createSprint({ boardId, name, start, finish, goal });
+      
+      case 'update_sprint':
+        return await client.agile.updateSprint({ boardId, sprintId, name, start, finish, goal });
+      
+      case 'delete_sprint':
+        return await client.agile.deleteSprint({ boardId, sprintId });
+      
+      case 'archive_sprint':
+        return await client.agile.archiveSprint({ boardId, sprintId });
+      
+      case 'sprint_issues':
+        return await client.agile.getSprintIssues({ boardId, sprintId });
+      
+      case 'assign_issues':
+        if (!issueIds || !Array.isArray(issueIds)) {
+          throw new Error('issueIds must be an array of issue IDs');
+        }
+        return await client.agile.assignIssuesToSprint({ boardId, sprintId, issueIds });
+      
       default:
-        throw new Error(`Unknown agile action: ${action}`);
+        throw new Error(`Unknown agile action: ${action}. Available actions: boards, board_details, sprints, sprint_details, create_sprint, update_sprint, delete_sprint, archive_sprint, sprint_issues, assign_issues`);
     }
   }
 
