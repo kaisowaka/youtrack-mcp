@@ -120,6 +120,10 @@ function createToolDefinitions(configLoader: DynamicConfigLoader) {
           type: 'string',
           description: `Issue type. Available types: ${typeExample}. Use get_field_values action to discover project-specific types.`
         },
+        estimation: {
+          type: 'number',
+          description: 'Time estimation in minutes (e.g., 120 for 2 hours, 480 for 1 day). For create/update actions.'
+        },
         comment: {
           type: 'string',
           description: 'Comment for state changes or completion'
@@ -889,7 +893,7 @@ export class YouTrackMCPServer {
   }
 
   private async handleIssuesManage(client: any, args: any) {
-    const { action, projectId, issueId, userId, summary, description, query, state, comment, priority, assignee, type, targetIssueId, targetProjectId, linkType, fieldName } = args;
+    const { action, projectId, issueId, userId, summary, description, query, state, comment, priority, assignee, type, estimation, targetIssueId, targetProjectId, linkType, fieldName } = args;
     let normalizedLinkType = linkType;
     
     // Validate parameters based on action
@@ -947,12 +951,12 @@ export class YouTrackMCPServer {
     
     switch (action) {
       case 'create':
-        return await client.issues.createIssue(projectId || this.resolveProjectId(), { 
-          summary, description, priority, assignee, type 
+        return await client.issues.createIssue(projectId || this.resolveProjectId(), {
+          summary, description, priority, assignee, type, estimation
         });
       case 'update':
-        return await client.issues.updateIssue(issueId, { 
-          summary, description, state, priority, assignee, type 
+        return await client.issues.updateIssue(issueId, {
+          summary, description, state, priority, assignee, type, estimation
         });
       case 'get':
         return await client.issues.getIssue(issueId);
