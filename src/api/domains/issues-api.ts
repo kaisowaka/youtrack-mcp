@@ -10,6 +10,7 @@ export interface IssueCreateParams {
   priority?: string;
   assignee?: string;
   dueDate?: string;
+  estimation?: number;
   tags?: string[];
   [key: string]: any;
 }
@@ -70,7 +71,7 @@ export class IssuesAPIClient extends BaseAPIClient {
       
       // Apply custom fields via commands after creation (more reliable)
       const commandFailures: string[] = [];
-      if (issueId && (params.type || params.priority || params.state || params.assignee || params.subsystem)) {
+      if (issueId && (params.type || params.priority || params.state || params.assignee || params.subsystem || typeof params.estimation === 'number')) {
         try {
           const failures = await this.applyCustomFieldsViaCommands(issueId, params);
           commandFailures.push(...failures);
@@ -694,29 +695,40 @@ export class IssuesAPIClient extends BaseAPIClient {
    */
   private async applyCustomFieldsViaCommands(issueId: string, params: any): Promise<string[]> {
     const commands: string[] = [];
-    
+
     // YouTrack command syntax: "FieldName: Value" or "FieldName Value" depending on the field
     // For enum fields (Type, Priority, State), use colon syntax
     if (params.type) {
       commands.push(`Type: ${params.type}`);
     }
-    
+
     if (params.priority) {
       commands.push(`Priority: ${params.priority}`);
     }
-    
+
     if (params.state) {
       commands.push(`State: ${params.state}`);
     }
-    
+
     if (params.assignee) {
       commands.push(`Assignee: ${params.assignee}`);
     }
-    
+
     if (params.subsystem) {
       commands.push(`Subsystem: ${params.subsystem}`);
     }
-    
+
+    // Estimation handling (same as updateIssue)
+    if (typeof params.estimation === 'number') {
+      const hours = Math.floor(params.estimation / 60);
+      const minutes = params.estimation % 60;
+      const estParts = [] as string[];
+      if (hours) estParts.push(`${hours}h`);
+      if (minutes) estParts.push(`${minutes}m`);
+      const estimationStr = estParts.length ? estParts.join(' ') : '0m';
+      commands.push(`Estimation ${estimationStr}`);
+    }
+
     const failures: string[] = [];
     
     // Apply commands one by one
